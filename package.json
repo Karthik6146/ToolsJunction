@@ -50,6 +50,7 @@
     "docx": "^9.14.0",
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0",
+    "happy-dom": "^21.0.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.2",

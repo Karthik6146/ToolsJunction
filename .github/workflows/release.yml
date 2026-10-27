@@ -5,28 +5,38 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Read-only by default; only the release job may write (to create the GitHub Release).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # actions pinned to full commit SHAs (tag in the comment) so a moved tag can't change what runs with write access
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false # no token on disk while dependency install scripts run
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test
+      # Code signing: electron-builder signs the installer when these secrets exist
+      # (Settings > Secrets > Actions: WIN_CSC_LINK = base64 of the .pfx code-signing certificate,
+      # WIN_CSC_KEY_PASSWORD = its password). Without them the installer is built unsigned.
       - run: npm run dist:win
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v4
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ToolsJunction-windows
           path: release/*.exe
       - if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: release/*.exe

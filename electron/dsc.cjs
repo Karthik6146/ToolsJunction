@@ -9,6 +9,8 @@ const os = require('os');
 const path = require('path');
 
 const LOG = path.join(os.tmpdir(), 'toolsjunction-dsc.log');
+// full path: a bare 'powershell.exe' would be searched for in the working directory first
+const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 const log = (msg) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${msg}\n`); } catch { /* logging is best effort */ } };
 
 // `interactive`: the token driver may open its own PIN dialog. windowsHide would make Windows turn that
@@ -16,7 +18,7 @@ const log = (msg) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()}
 function ps(script, env = {}, { interactive = false, timeoutMs = 2 * 60 * 1000 } = {}) {
   return new Promise((resolve, reject) => {
     execFile(
-      'powershell.exe',
+      POWERSHELL,
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', ...(interactive ? ['-WindowStyle', 'Hidden'] : []), '-Command', script],
       { env: { ...process.env, ...env }, windowsHide: !interactive, maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs },
       (err, stdout, stderr) => {

@@ -64,9 +64,17 @@ export function OcrPdf() {
   const pdf = usePdf();
   const [lang, setLang] = useState('eng');
   const go = () => pdf.run(async () => {
-    const { createWorker } = await import('tesseract.js');
+    const [{ createWorker }, { default: workerUrl }, { default: coreUrl }] = await Promise.all([
+      import('tesseract.js'),
+      import('tesseract.js/dist/worker.min.js?url'),
+      // shortcut: SIMD core only (every browser since 2023 and Electron); very old Safari can't run OCR
+      import('tesseract.js-core/tesseract-core-simd-lstm.wasm.js?url'),
+    ]);
     pdf.setProgress('Loading OCR engine and language data…');
-    const worker = await createWorker(lang);
+    // OCR code ships with the app instead of running from a third-party CDN; only language data
+    // (versioned, not executable) is still downloaded. Workers need absolute URLs.
+    const abs = (u: string) => new URL(u, location.href).href;
+    const worker = await createWorker(lang, 1, { workerPath: abs(workerUrl), corePath: abs(coreUrl), workerBlobURL: false });
     try {
       const doc = await openPdfjs(pdf.bytes!);
       const parts: Uint8Array[] = [];

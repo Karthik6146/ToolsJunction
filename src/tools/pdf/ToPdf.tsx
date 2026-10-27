@@ -91,7 +91,7 @@ export function HtmlToPdf() {
         <label className="field check"><input type="checkbox" checked={landscape} onChange={(e) => setLand(e.target.checked)} />Landscape</label>
         <button className="btn" disabled={busy || !html.trim()} onClick={() => run(async () => download(await htmlToPdf(html, { landscape }), 'page.pdf'))}>Convert to PDF</button>
       </Panel>
-      <p className="muted">Scripts are not run. Images from other websites may not appear due to browser security rules.</p>
+      <p className="muted">For your safety, scripts don't run and nothing outside the file is loaded (web images, local files, network shares). Embedded images (data: URLs) still appear.</p>
       <Status busy={busy} error={error} />
     </>
   );

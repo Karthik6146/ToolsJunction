@@ -6,8 +6,9 @@ on:
   workflow_dispatch:
 
 # publishes dist/ to the gh-pages branch; Pages serves that branch (Settings > Pages > Deploy from a branch > gh-pages)
+# Read-only by default; only the deploy job may write, and only the publish step uses the token.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: pages
@@ -16,18 +17,23 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # actions pinned to full commit SHAs (tag in the comment) so a moved tag can't change what runs with write access
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false # no token on disk while dependency install scripts run
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - uses: peaceiris/actions-gh-pages@v4
+      - uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: dist

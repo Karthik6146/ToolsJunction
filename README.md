@@ -109,7 +109,7 @@ Your files never leave your device.
 - Compress PDF and Redact turn the affected pages into images.
 - Edit PDF adds content on top of pages; to change existing text, use whiteout plus new text.
 - Added text uses standard PDF fonts, which cover Latin characters only.
-- OCR downloads its engine from a CDN the first time; your PDF stays on your device.
+- The OCR engine ships with the app; only its language data (a few MB) downloads on first use. Your PDF stays on your device.
 - DSC signing needs the Windows app: browsers can't talk to USB tokens. Your token's driver must be installed; Windows asks for the token PIN.
 - Not included yet: PowerPoint → PDF, timestamp-server (TSA) signatures.
 
@@ -126,7 +126,7 @@ npm run dist:win     # build the Windows installer into release/
 
 **Stack:** Preact (React API) · TypeScript · Vite · pdf-lib (@cantoo fork) · pdf.js · tesseract.js · mammoth · SheetJS · docx · pptxgenjs · jsPDF · html2canvas · Electron
 
-**Releases:** every push to `main` tests, builds and publishes the site to the `gh-pages` branch. Pushing a tag like `v1.0.2` builds the Windows installer and attaches it to a GitHub Release.
+**Releases:** every push to `main` tests, builds and publishes the site to the `gh-pages` branch. Pushing a tag like `v1.0.2` builds the Windows installer and attaches it to a GitHub Release. To sign the installer, add a Windows code-signing certificate as repository secrets `WIN_CSC_LINK` (base64 of the `.pfx`) and `WIN_CSC_KEY_PASSWORD`; without them it is built unsigned. Workflows use read-only tokens by default and actions pinned to commit SHAs.
 
 ## 📄 License
 
