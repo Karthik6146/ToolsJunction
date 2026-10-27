@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as pdfjs from 'pdfjs-dist';
-import { Field, Status } from '../../components/ui';
+import { Field, Status, useRunner } from '../../components/ui';
+import { dscBridge, listSigFields, signPdf, type DscCert, type SigField } from '../../lib/dsc';
 import { PDF_TYPE, download, type Bytes } from '../../lib/files';
 import { applyObjects, type FontName, type Obj } from '../../lib/annotate';
 import { replaceWithRaster } from '../../lib/pdf';
@@ -35,7 +36,8 @@ function usePages(bytes: Bytes | null) {
       setDoc(d);
       for (let i = 0; i < d.numPages && !dead; i++) {
         const vp = (await d.getPage(i + 1)).getViewport({ scale: 1 });
-        const c = await renderPage(d, i, 1.6);
+        // 2x keeps small form text readable when zoomed to page width
+        const c = await renderPage(d, i, 2);
         const info = { w: vp.width, h: vp.height, img: c.toDataURL('image/jpeg', 0.85) };
         if (!dead) setPages((p) => [...p, info]);
       }
@@ -50,22 +52,40 @@ function textSize(text: string, size: number) {
   return { w: Math.max(20, Math.max(...lines.map((l) => l.length)) * size * 0.56 + 6), h: lines.length * size * 1.2 + 4 };
 }
 
-function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPending, objs, setObjs, bytesRef }: {
+type EditorHandle = { bytes: Bytes | null; doc: PDFDocumentProxy | null; file: File | null; setFile: (f: File) => void };
+
+function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPending, objs, setObjs, bytesRef, overlay }: {
   modes: Mode[];
-  sidebar?: (ctx: { page: number; addObj: (o: Obj) => void }) => ReactNode;
+  sidebar?: (ctx: { page: number; addObj: (o: Obj) => void; bytes: Bytes | null }) => ReactNode;
   saveLabel: string;
   onSave: (bytes: Bytes, objs: Obj[], file: File | null, setProgress: (s: string) => void) => Promise<void>;
   pending: Pending;
   setPending: (p: Pending) => void;
   objs: Obj[];
   setObjs: React.Dispatch<React.SetStateAction<Obj[]>>;
-  bytesRef?: React.MutableRefObject<{ bytes: Bytes | null; doc: PDFDocumentProxy | null }>;
+  bytesRef?: React.MutableRefObject<EditorHandle>;
+  /** extra clickable items drawn over a page, e.g. signature fields */
+  overlay?: (page: number, zoom: number) => ReactNode;
 }) {
   const pdf = usePdf();
   const { pages, doc } = usePages(pdf.bytes);
   const [mode, setMode] = useState<Mode>(modes[0]);
   const [sel, setSel] = useState<number | null>(null);
-  const [zoom, setZoom] = useState(1.2);
+  const [zoom, setZoom] = useState(1);
+  const stage = useRef<HTMLDivElement>(null);
+  const userZoomed = useRef(false);
+  const widest = pages.length ? Math.max(...pages.map((p) => p.w)) : 0;
+  const fitWidth = () => {
+    const w = stage.current?.clientWidth;
+    if (w && widest) setZoom(Math.min(2, Math.max(0.4, (w - 34) / widest)));
+  };
+  // fit pages to the stage until the user picks a zoom themselves
+  useEffect(() => {
+    if (!userZoomed.current) fitWidth();
+    const onResize = () => !userZoomed.current && fitWidth();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [widest]); // eslint-disable-line react-hooks/exhaustive-deps
   const [color, setColor] = useState(modes.includes('redact') ? '#000000' : '#e5322d');
   const [size, setSize] = useState(16);
   const [font, setFont] = useState<FontName>('Helvetica');
@@ -73,7 +93,7 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
   const drag = useRef<{ id: number; kind: 'move' | 'resize' | 'create' | 'draw'; sx: number; sy: number; o: Obj } | null>(null);
 
   useEffect(() => { setObjs([]); setSel(null); }, [pdf.bytes, setObjs]);
-  if (bytesRef) bytesRef.current = { bytes: pdf.bytes, doc };
+  if (bytesRef) bytesRef.current = { bytes: pdf.bytes, doc, file: pdf.file, setFile: pdf.setFile };
 
   const selected = objs.find((o) => o.id === sel);
   const update = (id: number, patch: Partial<Obj>) => setObjs((os) => os.map((o) => (o.id === id ? ({ ...o, ...patch } as Obj) : o)));
@@ -227,7 +247,7 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
           {modes.length > 1 && modes.map((m) => (
             <button key={m} className={`btn sm ghost ${mode === m && !pending ? 'on' : ''}`} onClick={() => { setMode(m); setPending(null); }}>{MODE_LABEL[m]}</button>
           ))}
-          {sidebar?.({ page: curPage, addObj })}
+          {sidebar?.({ page: curPage, addObj, bytes: pdf.bytes })}
           {pending && <div className="status busy">Click on a page to place it. <button className="btn sm ghost" onClick={() => setPending(null)}>Cancel</button></div>}
           {!modes.includes('redact') && <Field label="Color"><input type="color" value={color} onChange={(e) => { setColor(e.target.value); if (selected && 'color' in selected) update(selected.id, { color: e.target.value }); }} /></Field>}
           {(modes.includes('text') || modes.includes('draw')) && <Field label="Size" value={`${size}`}>
@@ -239,12 +259,15 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
             </select>
           </Field>}
           {selected?.kind === 'note' && <Field label="Note text"><textarea style={{ minHeight: 80 }} value={selected.text} onChange={(e) => update(selected.id, { text: e.target.value })} autoFocus /></Field>}
-          <Field label="Zoom" value={`${Math.round(zoom * 100)}%`}><input type="range" min={50} max={250} step={10} value={zoom * 100} onChange={(e) => setZoom(+e.target.value / 100)} /></Field>
+          <Field label="Zoom" value={`${Math.round(zoom * 100)}%`}>
+            <input type="range" min={40} max={250} step={10} value={Math.round(zoom * 100)} onChange={(e) => { userZoomed.current = true; setZoom(+e.target.value / 100); }} />
+          </Field>
+          <button className="btn sm ghost" onClick={() => { userZoomed.current = false; fitWidth(); }}>↔ Fit to width</button>
           <button className="btn" disabled={pdf.busy} onClick={save}>{saveLabel}</button>
           <span className="muted">{objs.length} item(s) · Del removes selected</span>
           <Status busy={pdf.busy} error={pdf.error} progress={pdf.progress} />
         </div>
-        <div className="stage">
+        <div className="stage" ref={stage}>
           {!pages.length && <div className="status busy"><span className="spin" /> Rendering pages…</div>}
           {pages.map((p, i) => (
             <div key={i} className="page-holder" style={{ width: p.w * zoom, height: p.h * zoom }}>
@@ -256,6 +279,7 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
                 onPointerMove={onPageMove}
                 onPointerUp={onPageUp}
               >
+                {overlay?.(i, zoom)}
                 {objs.filter((o) => o.page === i).map(renderObj)}
               </div>
               <span className="muted" style={{ position: 'absolute', bottom: -20, right: 0 }}>{i + 1} / {pages.length}</span>
@@ -364,7 +388,7 @@ function SignaturePad({ onUse }: { onUse: (p: Pending) => void }) {
 
   return (
     <div style={{ display: 'grid', gap: 6 }}>
-      <b>Your signature</b>
+      <b>Drawn / typed signature</b>
       <div style={{ display: 'flex', gap: 4 }}>
         <button className={`btn sm ghost ${tab === 'draw' ? 'on' : ''}`} onClick={() => setTab('draw')}>Draw</button>
         <button className={`btn sm ghost ${tab === 'type' ? 'on' : ''}`} onClick={() => setTab('type')}>Type</button>
@@ -400,22 +424,124 @@ function SignaturePad({ onUse }: { onUse: (p: Pending) => void }) {
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <input type="color" value={ink} onChange={(e) => setInk(e.target.value)} aria-label="Ink color" />
         {tab === 'draw' && <button className="btn sm ghost" onClick={() => pad.current!.getContext('2d')!.clearRect(0, 0, 600, 220)}>Clear</button>}
-        <button className="btn sm" onClick={use}>Place signature</button>
+        <button className="btn sm" onClick={use}>Place</button>
       </div>
       {err && <div className="status error">{err}</div>}
     </div>
   );
 }
 
+const RELEASES = 'https://github.com/Karthik6146/ToolsJunction/releases/latest';
+
+function DscPanel({ bytes, editor, objs, fields, setFields, target, setTarget }: {
+  bytes: Bytes | null;
+  editor: React.MutableRefObject<EditorHandle>;
+  objs: Obj[];
+  fields: SigField[];
+  setFields: (f: SigField[]) => void;
+  target: string;
+  setTarget: (n: string) => void;
+}) {
+  const bridge = dscBridge();
+  const [certs, setCerts] = useState<DscCert[] | null>(null);
+  const [thumb, setThumb] = useState('');
+  const [reason, setReason] = useState('');
+  const { busy, error, progress, setProgress, run } = useRunner();
+
+  useEffect(() => {
+    setFields([]);
+    setTarget('');
+    if (!bytes) return;
+    listSigFields(bytes).then((f) => {
+      setFields(f);
+      setTarget(f.find((x) => !x.signed)?.name ?? '');
+    }).catch(() => {});
+  }, [bytes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const empty = fields.filter((f) => !f.signed);
+  const unique = [...new Set(empty.map((f) => f.name))];
+
+  if (!bridge) {
+    return <>
+      <b>Digital signature (DSC)</b>
+      <p className="muted" style={{ margin: 0 }}>
+        Signing with a DSC USB token needs the <a href={RELEASES} target="_blank" rel="noreferrer">ToolsJunction Windows app</a>.
+        {fields.length > 0 && ` This PDF has ${empty.length} empty signature field(s).`}
+      </p>
+    </>;
+  }
+
+  const loadCerts = () => run(async () => {
+    const list = await bridge.list();
+    if (!list.length) throw new Error('No certificate found. Plug in your DSC token and make sure its driver is installed.');
+    setCerts(list);
+    setThumb(list[0].thumbprint);
+  });
+
+  const sign = () => run(async () => {
+    const ed = editor.current;
+    const cert = certs!.find((c) => c.thumbprint === thumb)!;
+    let input = bytes!;
+    if (objs.length) {
+      // drawn items rewrite the file, which would invalidate signatures already in it
+      if (fields.some((f) => f.signed)) throw new Error('This PDF already has a signature. Remove drawn items, or save them before anyone signs.');
+      input = await applyObjects(input, objs);
+    }
+    setProgress('Enter your DSC PIN in the token window…');
+    const out = await signPdf(input, { fieldName: target || undefined, signer: cert.name, reason: reason || undefined }, (d) => bridge.sign(thumb, d));
+    const name = outName(ed.file, 'signed');
+    download(out, name, PDF_TYPE);
+    // continue from the signed file so a second partner signs on top of the first
+    ed.setFile(new File([out as BlobPart], name, { type: PDF_TYPE }));
+  });
+
+  return <>
+    <b>Digital signature (DSC)</b>
+    {!certs ? (
+      <button className="btn sm" disabled={busy} onClick={loadCerts}>🔑 Use my DSC token</button>
+    ) : <>
+      <Field label="Certificate">
+        <select value={thumb} onChange={(e) => setThumb(e.target.value)}>
+          {certs.map((c) => <option key={c.thumbprint} value={c.thumbprint}>{c.name} · {c.issuer} · exp {c.expires}</option>)}
+        </select>
+      </Field>
+      <Field label="Sign in">
+        <select value={target} onChange={(e) => setTarget(e.target.value)}>
+          {unique.map((n) => <option key={n} value={n}>Field: {n}</option>)}
+          <option value="">New invisible signature</option>
+        </select>
+      </Field>
+      <Field label="Reason (optional)"><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Approved" /></Field>
+      <button className="btn sm" disabled={busy || !thumb} onClick={sign}>✍ Sign with DSC</button>
+    </>}
+    {fields.length > 0 && <span className="muted">{empty.length} of {fields.length} signature field(s) empty · click a blue box to choose it</span>}
+    <Status busy={busy} error={error} progress={progress} />
+  </>;
+}
+
 export function SignPdf() {
   const [pending, setPending] = useState<Pending>(null);
   const [objs, setObjs] = useState<Obj[]>([]);
+  const [fields, setFields] = useState<SigField[]>([]);
+  const [target, setTarget] = useState('');
+  const editor = useRef<EditorHandle>({ bytes: null, doc: null, file: null, setFile: () => {} });
   return (
     <PdfCanvasEditor
       modes={['select', 'text']}
       saveLabel="Save signed PDF"
-      pending={pending} setPending={setPending} objs={objs} setObjs={setObjs}
-      sidebar={({ page, addObj }) => <>
+      pending={pending} setPending={setPending} objs={objs} setObjs={setObjs} bytesRef={editor}
+      overlay={(page, z) => fields.filter((f) => f.page === page).map((f, i) => (
+        <button
+          key={`${f.name}-${i}`}
+          className={`sigbox ${f.signed ? 'signed' : ''} ${target === f.name ? 'on' : ''}`}
+          style={{ left: f.x * z, top: f.y * z, width: f.w * z, height: f.h * z }}
+          disabled={f.signed}
+          title={f.signed ? `${f.name}: signed` : `Signature field ${f.name}`}
+          onClick={() => setTarget(f.name)}
+        >{f.signed ? '✓ Signed' : 'Sign here'}</button>
+      ))}
+      sidebar={({ page, addObj, bytes }) => <>
+        <DscPanel bytes={bytes} editor={editor} objs={objs} fields={fields} setFields={setFields} target={target} setTarget={setTarget} />
         <SignaturePad onUse={setPending} />
         <button className="btn sm ghost" onClick={() => {
           const text = new Date().toLocaleDateString();
@@ -451,7 +577,7 @@ export function RedactPdf() {
   const [objs, setObjs] = useState<Obj[]>([]);
   const [term, setTerm] = useState('');
   const [found, setFound] = useState('');
-  const ref = useRef<{ bytes: Bytes | null; doc: PDFDocumentProxy | null }>({ bytes: null, doc: null });
+  const ref = useRef<EditorHandle>({ bytes: null, doc: null, file: null, setFile: () => {} });
   const search = async () => {
     const doc = ref.current.doc;
     if (!doc || !term.trim()) return;

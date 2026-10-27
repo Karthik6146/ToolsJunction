@@ -1,5 +1,11 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const dsc = require('./dsc.cjs');
+
+// only our own bundled page may call native signing
+const trusted = (e) => e.senderFrame && e.senderFrame.url.startsWith('file:');
+ipcMain.handle('dsc:list', (e) => (trusted(e) ? dsc.list() : Promise.reject(new Error('Not allowed'))));
+ipcMain.handle('dsc:sign', (e, thumb, data) => (trusted(e) ? dsc.sign(thumb, data) : Promise.reject(new Error('Not allowed'))));
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -9,7 +15,7 @@ function createWindow() {
     title: 'ToolsJunction',
     icon: path.join(__dirname, '..', 'dist', 'icon.png'),
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'preload.cjs') },
   });
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 

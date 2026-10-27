@@ -79,6 +79,7 @@ Your files never leave your device.
 **✍️ Edit & Sign**
 - Edit PDF: text, images, shapes, freehand, highlight, whiteout, sticky notes
 - Sign: draw, type or upload a signature
+- **DSC signing** (Windows app): sign with your USB token (ePass2003, ProxKey, mToken…) into the form's own signature fields, e.g. MCA / ROC e-forms. Earlier signatures stay valid.
 - Redact: search & black out, content truly removed
 - Fill forms · Watermark · Page numbers · Crop · Flatten · Metadata
 
@@ -109,7 +110,8 @@ Your files never leave your device.
 - Edit PDF adds content on top of pages; to change existing text, use whiteout plus new text.
 - Added text uses standard PDF fonts, which cover Latin characters only.
 - OCR downloads its engine from a CDN the first time; your PDF stays on your device.
-- Not included yet: PowerPoint → PDF, certificate-based digital signatures.
+- DSC signing needs the Windows app: browsers can't talk to USB tokens. Your token's driver must be installed; Windows asks for the token PIN.
+- Not included yet: PowerPoint → PDF, timestamp-server (TSA) signatures.
 
 ## 🛠️ Development
 
