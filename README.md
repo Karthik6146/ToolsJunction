@@ -45,8 +45,8 @@ Tech: React + TypeScript + Vite, pdf-lib (@cantoo fork with encryption), pdf.js,
 
 ## Deploy
 
-- Push to `main`: GitHub Actions tests, builds and publishes to GitHub Pages
-  (enable once in **Settings → Pages → Source: GitHub Actions**).
+- Push to `main`: GitHub Actions tests, builds and publishes `dist/` to the `gh-pages` branch
+  (Pages source: **Settings → Pages → Deploy from a branch → `gh-pages` / root**).
 - Push a tag like `v1.0.0`: Actions builds the Windows installer and attaches it to a GitHub Release.
 
 ## License
