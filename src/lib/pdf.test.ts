@@ -1,7 +1,7 @@
-import { PDFDocument } from '@cantoo/pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from '@cantoo/pdf-lib';
 import {
   loadPdf, parseRanges, mergePdfs, splitPdf, rotatePages, protectPdf, unlockPdf, pageNumbers,
-  watermark, selectPages, organizePages, textToPdf, cropPdf, setMetadata, getMetadata,
+  watermark, selectPages, organizePages, textToPdf, cropPdf, setMetadata, getMetadata, replaceWithRaster,
 } from './pdf';
 
 async function make(n: number): Promise<Uint8Array> {
@@ -21,6 +21,42 @@ describe('parseRanges', () => {
   it('rejects garbage and empty', () => {
     expect(() => parseRanges('a-b', 5)).toThrow(/not a valid/);
     expect(() => parseRanges(' , ', 5)).toThrow(/at least one/);
+  });
+});
+
+// 4x4 white JPEG: stands in for the rasterised redacted page
+const JPG = Uint8Array.from(atob('/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAEAAQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD8qqKKKAP/2Q=='), (c) => c.charCodeAt(0));
+
+/** Every stream in the saved file, decompressed, as latin1 text: what anyone can recover from the bytes. */
+async function allStreamText(bytes: Uint8Array) {
+  const d = await PDFDocument.load(bytes);
+  let text = '';
+  for (const [, obj] of d.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) text += obj.toString();
+    else if (String(obj.dict.get(PDFName.of('Filter'))) !== '/DCTDecode') text += new TextDecoder('latin1').decode(decodePDFRawStream(obj).decode());
+  }
+  return text;
+}
+
+describe('redaction', () => {
+  it('removes the original page content from the saved file, not just from view', async () => {
+    const d = await PDFDocument.create();
+    d.setTitle('Salary list');
+    d.addPage([200, 300]).drawText('SECRET-ACCOUNT-123', { x: 10, y: 100 });
+    d.addPage([200, 300]).drawText('public page', { x: 10, y: 100 });
+    // the secret is recoverable from the input's streams (hex-encoded glyph codes)
+    const secretHex = Array.from(new TextEncoder().encode('SECRET-ACCOUNT-123'), (b) => b.toString(16).toUpperCase().padStart(2, '0')).join('');
+    expect((await allStreamText(await d.save())).includes(secretHex)).toBe(true);
+
+    const out = await replaceWithRaster(await d.save(), new Map([[0, JPG]]), 1);
+    const text = await allStreamText(out);
+    expect(text.includes(secretHex)).toBe(false);
+    expect(text.includes('Salary list')).toBe(false); // document metadata can repeat redacted text
+    const kept = await PDFDocument.load(out);
+    expect(kept.getPageCount()).toBe(2);
+    // the page that was not redacted is untouched
+    const publicHex = Array.from(new TextEncoder().encode('public page'), (b) => b.toString(16).toUpperCase().padStart(2, '0')).join('');
+    expect(text.includes(publicHex)).toBe(true);
   });
 });
 

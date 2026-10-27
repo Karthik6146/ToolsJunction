@@ -216,7 +216,12 @@ export async function rasterPdf(jpegs: Bytes[], scale: number): Promise<Bytes> {
   return doc.save();
 }
 
-/** Replace selected pages of a PDF with page images (used by Redact). */
+/**
+ * Replace selected pages of a PDF with page images (used by Redact).
+ * pdf-lib keeps unreferenced objects when saving, so the removed pages' text, fonts and images would
+ * survive in the file. Copying the final pages into a fresh document keeps only what they still use,
+ * and also drops document-level outline, metadata, names and form data that can repeat redacted text.
+ */
 export async function replaceWithRaster(bytes: Bytes, pages: Map<number, Bytes>, scale: number): Promise<Bytes> {
   const doc = await loadPdf(bytes);
   for (const [i, jpg] of pages) {
@@ -225,7 +230,9 @@ export async function replaceWithRaster(bytes: Bytes, pages: Map<number, Bytes>,
     doc.removePage(i);
     doc.insertPage(i, [w, h]).drawImage(img, { x: 0, y: 0, width: w, height: h });
   }
-  return doc.save();
+  const clean = await PDFDocument.create();
+  (await clean.copyPages(doc, doc.getPageIndices())).forEach((p) => clean.addPage(p));
+  return clean.save();
 }
 
 /** Plain text to A4 pages with word wrap. Standard fonts only cover WinAnsi; other chars become '?'. */

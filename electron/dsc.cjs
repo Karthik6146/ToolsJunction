@@ -199,10 +199,14 @@ function friendly(msg) {
   return msg;
 }
 
+const MAX_SIGN_BYTES = 512 * 1024 * 1024;
+
 async function sign(thumbprint, data, pin = '') {
   if (process.platform !== 'win32') throw new Error('DSC signing is available on Windows only');
   if (!/^[0-9A-F]{40}$/i.test(thumbprint)) throw new Error('Invalid certificate');
   if (typeof pin !== 'string' || pin.length > 64 || /[\0-\x1f]/.test(pin)) throw new Error('Invalid PIN');
+  // only raw document bytes from signPdf; anything else (strings, objects, huge buffers) is refused
+  if (!(data instanceof Uint8Array) || data.length === 0 || data.length > MAX_SIGN_BYTES) throw new Error('Invalid document data');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tj-dsc-'));
   const input = path.join(dir, 'tbs.bin');
   const output = path.join(dir, 'sig.bin');
