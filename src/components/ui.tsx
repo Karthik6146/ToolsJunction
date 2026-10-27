@@ -26,8 +26,11 @@ export function FileDrop({ accept, multiple, onFiles, label }: {
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()}
     >
       <input ref={input} type="file" hidden accept={accept} multiple={multiple} onChange={(e) => { take(e.target.files); e.target.value = ''; }} />
+      <svg className="drop-ico" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 16V4m0 0L7 9m5-5 5 5" /><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+      </svg>
       <div className="drop-btn">{label ?? (multiple ? 'Select files' : 'Select file')}</div>
-      <div className="muted">or drop {multiple ? 'files' : 'a file'} here · {accept.replace(/,/g, ', ')}</div>
+      <div className="muted">or drop {multiple ? 'files' : 'a file'} here</div>
     </div>
   );
 }
@@ -97,8 +100,40 @@ export function useFiles(multiple = true) {
   };
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="field"><span>{label}</span>{children}</label>;
+export function Field({ label, value, children }: { label: string; value?: ReactNode; children: ReactNode }) {
+  return (
+    <label className="field">
+      <span className="field-label">{label}{value !== undefined && <b className="field-value">{value}</b>}</span>
+      {children}
+    </label>
+  );
+}
+
+/** Pill-style single choice for 2-4 short options. */
+export function Segmented<T extends string | number>({ label, value, options, onChange }: {
+  label: string; value: T; options: [T, string][]; onChange: (v: T) => void;
+}) {
+  return (
+    <div className="field">
+      <span className="field-label">{label}</span>
+      <div className="seg" role="radiogroup" aria-label={label}>
+        {options.map(([v, text]) => (
+          <button key={String(v)} type="button" role="radio" aria-checked={v === value} className={v === value ? 'on' : ''} onClick={() => onChange(v)}>
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="toggle">
+      <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
 }
 
 export function Panel({ children }: { children: ReactNode }) {

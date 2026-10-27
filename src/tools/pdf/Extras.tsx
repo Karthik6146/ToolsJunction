@@ -66,7 +66,7 @@ export function ReadAloud() {
               {voices.map((v) => <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>)}
             </select>
           </Field>
-          <Field label={`Speed: ${rate}×`}><input type="range" min={0.5} max={2} step={0.1} value={rate} onChange={(e) => setRate(+e.target.value)} /></Field>
+          <Field label="Speed" value={`${rate}×`}><input type="range" min={0.5} max={2} step={0.1} value={rate} onChange={(e) => setRate(+e.target.value)} /></Field>
           <Field label="Start page"><input type="number" min={1} max={pages.length} value={start} onChange={(e) => setStart(+e.target.value)} /></Field>
           {state !== 'playing'
             ? <button className="btn" onClick={play}>▶ {state === 'paused' ? 'Resume' : 'Play'}</button>

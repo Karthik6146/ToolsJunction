@@ -14,7 +14,7 @@ export function WatermarkPdf() {
       {pdf.bytes && <Panel>
         <Field label="Text"><input value={o.text} onChange={(e) => setO({ ...o, text: e.target.value })} /></Field>
         <Field label="Font size"><input type="number" min={8} max={200} value={o.size} onChange={(e) => setO({ ...o, size: +e.target.value })} /></Field>
-        <Field label={`Opacity: ${Math.round(o.opacity * 100)}%`}><input type="range" min={5} max={100} value={o.opacity * 100} onChange={(e) => setO({ ...o, opacity: +e.target.value / 100 })} /></Field>
+        <Field label="Opacity" value={`${Math.round(o.opacity * 100)}%`}><input type="range" min={5} max={100} value={o.opacity * 100} onChange={(e) => setO({ ...o, opacity: +e.target.value / 100 })} /></Field>
         <Field label="Angle"><select value={o.rotate} onChange={(e) => setO({ ...o, rotate: +e.target.value })}><option value={0}>0°</option><option value={45}>45°</option><option value={90}>90°</option><option value={-45}>-45°</option></select></Field>
         <Field label="Color"><input type="color" value={o.color} onChange={(e) => setO({ ...o, color: e.target.value })} /></Field>
         <button className="btn" disabled={pdf.busy || !o.text.trim()} onClick={() => pdf.run(async () => download(await watermark(pdf.bytes!, o), outName(pdf.file, 'watermarked'), PDF_TYPE))}>Add watermark</button>

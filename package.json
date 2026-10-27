@@ -27,6 +27,10 @@
       "electron/**",
       "package.json"
     ],
+    "compression": "maximum",
+    "electronLanguages": [
+      "en-US"
+    ],
     "win": {
       "target": "nsis",
       "icon": "public/icon.png"
@@ -36,31 +40,29 @@
       "allowToChangeInstallationDirectory": true
     }
   },
-  "dependencies": {
+  "//": "Everything is bundled by Vite, so there are no runtime dependencies; this keeps node_modules out of the Electron app.",
+  "devDependencies": {
     "@cantoo/pdf-lib": "^2.11.1",
+    "@preact/preset-vite": "^2.10.6",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "diff": "^9.0.0",
     "docx": "^9.14.0",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0",
     "pdfjs-dist": "^4.10.38",
     "pptxgenjs": "^4.0.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "preact": "^10.29.8",
     "react-router-dom": "^6.30.6",
     "tesseract.js": "^7.0.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.31",
-    "@types/react-dom": "^18.3.7",
-    "@vitejs/plugin-react": "^4.7.0",
-    "electron": "^45.0.0",
-    "electron-builder": "^26.18.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "allowScripts": {
     "esbuild@0.21.5": true,

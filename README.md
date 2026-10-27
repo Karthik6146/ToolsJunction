@@ -4,9 +4,9 @@ Free all-in-one image and PDF toolkit. It runs in your browser and as a Windows 
 **Your files never leave your device:** all processing happens locally in JavaScript.
 
 **Live site:** https://karthik6146.github.io/ToolsJunction/
-**Desktop app:** download the Windows installer from [Releases](https://github.com/Karthik6146/ToolsJunction/releases).
+**Desktop app:** install the site from Chrome/Edge (address bar → *Install app*, no download), or get the Windows installer (~108 MB) from [Releases](https://github.com/Karthik6146/ToolsJunction/releases).
 
-## Tools (40)
+## Tools (39)
 
 | Category | Tools |
 |---|---|
@@ -41,7 +41,9 @@ npm run electron:dev # run the desktop app
 npm run dist:win     # build the Windows installer into release/
 ```
 
-Tech: React + TypeScript + Vite, pdf-lib (@cantoo fork with encryption), pdf.js, tesseract.js, mammoth, SheetJS, docx, pptxgenjs, jsPDF, html2canvas, Electron.
+Built for slow connections: the home page loads ~28 KB (gzipped), each tool downloads only the libraries it needs, and a service worker caches everything so repeat visits work offline.
+
+Tech: Preact (React API) + TypeScript + Vite, pdf-lib (@cantoo fork with encryption), pdf.js, tesseract.js, mammoth, SheetJS, docx, pptxgenjs, jsPDF, html2canvas, Electron.
 
 ## Deploy
 

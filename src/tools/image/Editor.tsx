@@ -132,7 +132,7 @@ export function ImageEditor() {
         </div>
         <b>Adjust</b>
         {(Object.keys(ADJ) as AdjKey[]).map((k) => (
-          <Field key={k} label={`${ADJ[k].label}: ${adj[k]}${ADJ[k].unit === 'deg' ? '°' : ADJ[k].unit}`}>
+          <Field key={k} label={ADJ[k].label} value={`${adj[k]}${ADJ[k].unit === 'deg' ? '°' : ADJ[k].unit}`}>
             <input type="range" min={ADJ[k].min} max={ADJ[k].max} value={adj[k]} onChange={(e) => setAdj({ ...adj, [k]: +e.target.value })} />
           </Field>
         ))}
@@ -153,7 +153,7 @@ export function ImageEditor() {
           <label className="field check"><input type="checkbox" checked={bold} onChange={(e) => setBold(e.target.checked)} />Bold</label>
         </>}
         <Field label="Color"><input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></Field>
-        <Field label={`Size: ${size}`}><input type="range" min={8} max={300} value={size} onChange={(e) => setSize(+e.target.value)} /></Field>
+        <Field label="Size" value={`${size}`}><input type="range" min={8} max={300} value={size} onChange={(e) => setSize(+e.target.value)} /></Field>
         <button className="btn sm ghost" disabled={!layers.length} onClick={() => setLayers((l) => l.slice(0, -1))}>↶ Undo</button>
         <button className="btn sm ghost" onClick={() => { setAdj(defaults()); setLayers([]); }}>Reset all</button>
         <Field label="Save as">

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Field, Panel, Status } from '../../components/ui';
+import { Panel, Segmented, Status } from '../../components/ui';
 import { download, downloadAll } from '../../lib/files';
 import { extractText, openPdfjs, renderAll, renderPage } from '../../lib/pdfjs';
 import { PdfPicker, outName, usePdf } from './common';
@@ -17,10 +17,8 @@ export function PdfToImages() {
     <>
       <PdfPicker pdf={pdf} />
       {pdf.bytes && <Panel>
-        <Field label="Format"><select value={fmt} onChange={(e) => setFmt(e.target.value as typeof fmt)}><option value="image/jpeg">JPG</option><option value="image/png">PNG</option></select></Field>
-        <Field label="Resolution">
-          <select value={dpi} onChange={(e) => setDpi(+e.target.value)}><option value={72}>72 DPI (screen)</option><option value={150}>150 DPI</option><option value={300}>300 DPI (print)</option></select>
-        </Field>
+        <Segmented label="Format" value={fmt} onChange={setFmt} options={[['image/jpeg', 'JPG'], ['image/png', 'PNG']]} />
+        <Segmented label="Resolution (DPI)" value={dpi} onChange={setDpi} options={[[72, '72'], [150, '150'], [300, '300']]} />
         <button className="btn" disabled={pdf.busy} onClick={go}>Convert to images</button>
       </Panel>}
       <Status busy={pdf.busy} error={pdf.error} progress={pdf.progress} />

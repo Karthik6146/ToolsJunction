@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { FileDrop, FileList, Field, Panel, Status, useFiles, useRunner } from '../../components/ui';
+import { FileDrop, FileList, Field, Panel, Segmented, Status, Toggle, useFiles, useRunner } from '../../components/ui';
 import { baseName, download, downloadAll, formatSize } from '../../lib/files';
 import { EXT, canvasToBlob, drawToCanvas, fitDims, fitToSize, loadImage, needsBg } from '../../lib/image';
 
@@ -56,16 +56,8 @@ type Fmt = 'keep' | 'image/jpeg' | 'image/png' | 'image/webp';
 const outType = (f: File, fmt: Fmt) => (fmt === 'keep' ? (EXT[f.type] ? f.type : 'image/png') : fmt);
 
 function FormatSelect({ value, onChange, keep = true }: { value: Fmt; onChange: (v: Fmt) => void; keep?: boolean }) {
-  return (
-    <Field label="Format">
-      <select value={value} onChange={(e) => onChange(e.target.value as Fmt)}>
-        {keep && <option value="keep">Same as input</option>}
-        <option value="image/jpeg">JPG</option>
-        <option value="image/png">PNG</option>
-        <option value="image/webp">WEBP</option>
-      </select>
-    </Field>
-  );
+  const opts: [Fmt, string][] = [['image/jpeg', 'JPG'], ['image/png', 'PNG'], ['image/webp', 'WEBP']];
+  return <Segmented label="Format" value={value} onChange={onChange} options={keep ? [['keep', 'Original'], ...opts] : opts} />;
 }
 
 export function ResizeImage() {
@@ -82,22 +74,16 @@ export function ResizeImage() {
     <BatchImage
       action="Resize images"
       options={<>
-        <Field label="Resize by">
-          <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-            <option value="px">Pixels</option>
-            <option value="percent">Percentage</option>
-            <option value="size">Target file size</option>
-          </select>
-        </Field>
+        <Segmented label="Resize by" value={mode} onChange={setMode} options={[['px', 'Pixels'], ['percent', 'Percent'], ['size', 'File size']]} />
         {mode === 'px' && <>
-          <Field label="Width (px, 0 = auto)"><input type="number" min={0} value={width} onChange={(e) => setW(+e.target.value)} /></Field>
-          <Field label="Height (px, 0 = auto)"><input type="number" min={0} value={height} onChange={(e) => setH(+e.target.value)} /></Field>
-          <label className="field check"><input type="checkbox" checked={keepRatio} onChange={(e) => setKR(e.target.checked)} />Keep aspect ratio</label>
+          <Field label="Width (px)"><input type="number" min={0} placeholder="Auto" value={width || ''} onChange={(e) => setW(+e.target.value)} /></Field>
+          <Field label="Height (px)"><input type="number" min={0} placeholder="Auto" value={height || ''} onChange={(e) => setH(+e.target.value)} /></Field>
+          <Toggle label="Keep aspect ratio" checked={keepRatio} onChange={setKR} />
         </>}
-        {mode === 'percent' && <Field label={`Scale: ${percent}%`}><input type="range" min={1} max={200} value={percent} onChange={(e) => setP(+e.target.value)} /></Field>}
+        {mode === 'percent' && <Field label="Scale" value={`${percent}%`}><input type="range" min={1} max={200} value={percent} onChange={(e) => setP(+e.target.value)} /></Field>}
         {mode === 'size' && <Field label="Max size (KB)"><input type="number" min={5} value={kb} onChange={(e) => setKb(+e.target.value)} /></Field>}
         <FormatSelect value={fmt} onChange={setFmt} />
-        {mode !== 'size' && <Field label={`Quality: ${quality}%`}><input type="range" min={10} max={100} value={quality} onChange={(e) => setQ(+e.target.value)} /></Field>}
+        {mode !== 'size' && <Field label="Quality" value={`${quality}%`}><input type="range" min={10} max={100} value={quality} onChange={(e) => setQ(+e.target.value)} /></Field>}
       </>}
       process={async (f) => {
         const img = await loadImage(f);
@@ -124,7 +110,7 @@ export function CompressImage() {
     <BatchImage
       action="Compress images"
       options={<>
-        <Field label={`Quality: ${quality}%`}><input type="range" min={10} max={95} value={quality} onChange={(e) => setQ(+e.target.value)} /></Field>
+        <Field label="Quality" value={`${quality}%`}><input type="range" min={10} max={95} value={quality} onChange={(e) => setQ(+e.target.value)} /></Field>
         <FormatSelect value={fmt} onChange={setFmt} />
         <Field label="Max width (px, 0 = keep)"><input type="number" min={0} value={maxW} onChange={(e) => setMaxW(+e.target.value)} /></Field>
         <span className="muted">PNG is lossless: choose JPG or WEBP for the biggest savings.</span>
@@ -152,7 +138,7 @@ export function ConvertImage() {
       action="Convert images"
       options={<>
         <FormatSelect value={fmt} onChange={setFmt} keep={false} />
-        <Field label={`Quality: ${quality}%`}><input type="range" min={10} max={100} value={quality} onChange={(e) => setQ(+e.target.value)} /></Field>
+        <Field label="Quality" value={`${quality}%`}><input type="range" min={10} max={100} value={quality} onChange={(e) => setQ(+e.target.value)} /></Field>
         {fmt === 'image/jpeg' && <Field label="Background for transparency"><input type="color" value={bg} onChange={(e) => setBg(e.target.value)} /></Field>}
       </>}
       process={async (f) => {

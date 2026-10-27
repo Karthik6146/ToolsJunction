@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileDrop, FileList, Field, Panel, Status, useFiles, useRunner } from '../../components/ui';
+import { FileDrop, FileList, Field, Panel, Segmented, Status, useFiles, useRunner } from '../../components/ui';
 import { PageThumbs, useThumbs, type PageItem } from '../../components/PageThumbs';
 import { PDF_TYPE, download, downloadAll, readBytes } from '../../lib/files';
 import { mergePdfs, organizePages, parseRanges, rotatePages, selectPages, splitPdf } from '../../lib/pdf';
@@ -43,13 +43,7 @@ export function SplitPdf() {
       <PdfPicker pdf={pdf} />
       {pdf.bytes && <>
         <Panel>
-          <Field label="Split mode">
-            <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-              <option value="ranges">Custom ranges</option>
-              <option value="every">Every page</option>
-              <option value="n">Every N pages</option>
-            </select>
-          </Field>
+          <Segmented label="Split mode" value={mode} onChange={setMode} options={[['ranges', 'Ranges'], ['every', 'Every page'], ['n', 'Every N']]} />
           {mode === 'ranges' && <Field label="Ranges (each becomes a file)"><input value={spec} onChange={(e) => setSpec(e.target.value)} placeholder="1-3, 4-6, 7" /></Field>}
           {mode === 'n' && <Field label="Pages per file"><input type="number" min={1} value={n} onChange={(e) => setN(Math.max(1, +e.target.value))} /></Field>}
           <button className="btn" disabled={pdf.busy} onClick={go}>Split PDF</button>

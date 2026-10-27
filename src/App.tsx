@@ -5,7 +5,7 @@ import { CATEGORIES, catOf, toolById, tools, type Category } from './tools/regis
 function Header() {
   return (
     <header className="top">
-      <Link to="/" className="brand"><span className="logo">TJ</span> Tools<b>Junction</b></Link>
+      <Link to="/" className="brand"><span className="logo">TJ</span><span>Tools<b>Junction</b></span></Link>
       <span className="tag">Free · Private · Runs on your device</span>
     </header>
   );

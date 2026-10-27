@@ -11,3 +11,8 @@ createRoot(document.getElementById('root')!).render(
     </HashRouter>
   </StrictMode>,
 );
+
+// https only: skips the dev server and Electron (file://)
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}

@@ -230,7 +230,7 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
           {sidebar?.({ page: curPage, addObj })}
           {pending && <div className="status busy">Click on a page to place it. <button className="btn sm ghost" onClick={() => setPending(null)}>Cancel</button></div>}
           {!modes.includes('redact') && <Field label="Color"><input type="color" value={color} onChange={(e) => { setColor(e.target.value); if (selected && 'color' in selected) update(selected.id, { color: e.target.value }); }} /></Field>}
-          {(modes.includes('text') || modes.includes('draw')) && <Field label={`Size: ${size}`}>
+          {(modes.includes('text') || modes.includes('draw')) && <Field label="Size" value={`${size}`}>
             <input type="range" min={6} max={72} value={size} onChange={(e) => { setSize(+e.target.value); if (selected?.kind === 'text') update(selected.id, { size: +e.target.value, ...textSize(selected.text, +e.target.value) }); }} />
           </Field>}
           {modes.includes('text') && <Field label="Font">
@@ -239,7 +239,7 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
             </select>
           </Field>}
           {selected?.kind === 'note' && <Field label="Note text"><textarea style={{ minHeight: 80 }} value={selected.text} onChange={(e) => update(selected.id, { text: e.target.value })} autoFocus /></Field>}
-          <Field label={`Zoom: ${Math.round(zoom * 100)}%`}><input type="range" min={50} max={250} step={10} value={zoom * 100} onChange={(e) => setZoom(+e.target.value / 100)} /></Field>
+          <Field label="Zoom" value={`${Math.round(zoom * 100)}%`}><input type="range" min={50} max={250} step={10} value={zoom * 100} onChange={(e) => setZoom(+e.target.value / 100)} /></Field>
           <button className="btn" disabled={pdf.busy} onClick={save}>{saveLabel}</button>
           <span className="muted">{objs.length} item(s) · Del removes selected</span>
           <Status busy={pdf.busy} error={pdf.error} progress={pdf.progress} />

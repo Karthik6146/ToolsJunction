@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { Field, Panel, Status } from '../../components/ui';
+import { Field, Panel, Segmented, Status } from '../../components/ui';
 import { PDF_TYPE, download, formatSize } from '../../lib/files';
 import { mergePdfs, rasterPdf, repairPdf } from '../../lib/pdf';
 import { canvasToBytes, openPdfjs, renderAll, renderPage } from '../../lib/pdfjs';
 import { PdfPicker, outName, usePdf } from './common';
 
 const LEVELS = {
-  extreme: { label: 'Extreme (smallest, lower quality)', scale: 0.9, q: 0.45 },
-  recommended: { label: 'Recommended', scale: 1.3, q: 0.65 },
-  low: { label: 'Light (best quality)', scale: 2, q: 0.82 },
+  extreme: { scale: 0.9, q: 0.45 },
+  recommended: { scale: 1.3, q: 0.65 },
+  low: { scale: 2, q: 0.82 },
 };
 
 export function CompressPdf() {
@@ -33,11 +33,8 @@ export function CompressPdf() {
       <PdfPicker pdf={pdf} />
       {pdf.bytes && <>
         <Panel>
-          <Field label="Compression level">
-            <select value={level} onChange={(e) => setLevel(e.target.value as keyof typeof LEVELS)}>
-              {Object.entries(LEVELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </Field>
+          <Segmented label="Compression level" value={level} onChange={setLevel}
+            options={[['extreme', 'Smallest'], ['recommended', 'Balanced'], ['low', 'Best quality']]} />
           <button className="btn" disabled={pdf.busy} onClick={go}>Compress PDF</button>
         </Panel>
         <p className="muted">Pages are re-rendered as optimized images, so text in the result is not selectable. Run OCR afterwards if you need that.</p>
