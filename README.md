@@ -1,36 +1,117 @@
-# ToolsJunction
+<div align="center">
 
-Free all-in-one image and PDF toolkit. It runs in your browser and as a Windows desktop app.
-**Your files never leave your device:** all processing happens locally in JavaScript.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.svg">
+  <img src=".github/assets/banner-light.svg" alt="ToolsJunction: 39 free image and PDF tools" width="760">
+</picture>
 
-**Live site:** https://karthik6146.github.io/ToolsJunction/
-**Desktop app:** install the site from Chrome/Edge (address bar → *Install app*, no download), or get the Windows installer (~108 MB) from [Releases](https://github.com/Karthik6146/ToolsJunction/releases).
+<br><br>
 
-## Tools (39)
+**Resize, edit, convert, merge, sign and protect: everything in one place.**<br>
+Your files never leave your device.
 
-| Category | Tools |
+<br>
+
+<a href="https://karthik6146.github.io/ToolsJunction/"><img src="https://img.shields.io/badge/Open%20the%20app-e5322d?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Open the app"></a>
+&nbsp;
+<a href="https://github.com/Karthik6146/ToolsJunction/releases/latest"><img src="https://img.shields.io/badge/Download%20for%20Windows-1f2937?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
+
+<br><br>
+
+<img src="https://img.shields.io/github/v/release/Karthik6146/ToolsJunction?color=e5322d&label=release" alt="Latest release">
+<img src="https://img.shields.io/github/actions/workflow/status/Karthik6146/ToolsJunction/pages.yml?branch=main&label=deploy" alt="Deploy status">
+<img src="https://img.shields.io/badge/first%20load-28%20KB-22c55e" alt="First load 28 KB">
+<img src="https://img.shields.io/badge/works-offline-0ea5e9" alt="Works offline">
+<img src="https://img.shields.io/github/license/Karthik6146/ToolsJunction?color=64748b" alt="License">
+
+</div>
+
+<br>
+
+<p align="center">
+  <img src=".github/assets/screenshot-home.png" alt="ToolsJunction home page with searchable tool grid" width="880">
+</p>
+
+## ✨ Why ToolsJunction
+
+|  |  |
 |---|---|
-| Image | Resize (pixels / % / target KB, batch), Compress, Convert (JPG/PNG/WEBP), Crop, Rotate & Flip, Photo Editor (filters, presets, text, drawing), Image to Base64 |
-| Organize PDF | Merge, Split, Remove pages, Extract pages, Organize (drag to reorder, rotate, delete), Rotate |
-| Optimize PDF | Compress, Repair, OCR (searchable PDF, 11 languages) |
-| Convert to PDF | Images, Word (.docx), Excel (.xlsx/.csv), HTML, Text |
-| Convert from PDF | Images (JPG/PNG), Word, PowerPoint, Excel, Text |
-| Edit & Sign | Edit PDF (text, images, shapes, freehand, highlight, whiteout, sticky notes), Sign (draw/type/upload), Redact (with text search, true removal), Fill forms, Watermark, Page numbers, Crop, Flatten, Metadata |
-| Security | Protect (password), Unlock |
-| Extras | Read aloud (text-to-speech), Compare PDFs (text diff) |
+| 🔒 **Private by design** | Every tool runs inside your browser. Nothing is uploaded, ever. |
+| ⚡ **Fast on slow internet** | The home page is ~28 KB. Each tool loads only what it needs, then it's cached. |
+| 📴 **Works offline** | After your first visit, the app opens and works without a connection. |
+| 🖥️ **Install it anywhere** | Use it on the web, install it from Chrome/Edge, or get the Windows app. |
+| 💸 **Free, no limits** | No sign-up, no watermarks, no file-size caps beyond your device's memory. |
 
-Inspired by reduceimages.com, ilovepdf.com and Adobe Acrobat's feature set.
+## 🧰 Tools
 
-## Limits
+<table>
+<tr>
+<td valign="top" width="50%">
 
-- Office conversions are basic fidelity and done in the browser. Word/Excel/HTML to PDF pages are images (text not selectable).
+**🖼️ Image**
+- Resize: pixels, percent or target file size, batch
+- Compress JPG / PNG / WEBP
+- Convert between JPG, PNG, WEBP
+- Crop with aspect ratios
+- Rotate & flip
+- Photo editor: filters, presets, text, drawing
+- Image to Base64
+
+**📑 Organize PDF**
+- Merge · Split · Remove pages · Extract pages
+- Organize: drag to reorder, rotate, delete
+- Rotate pages
+
+**⚙️ Optimize PDF**
+- Compress PDF
+- Repair PDF
+- OCR: make scans searchable (11 languages)
+
+</td>
+<td valign="top" width="50%">
+
+**📥 Convert to PDF**
+- Images · Word (.docx) · Excel (.xlsx/.csv) · HTML · Text
+
+**📤 Convert from PDF**
+- Images (JPG/PNG) · Word · PowerPoint · Excel · Text
+
+**✍️ Edit & Sign**
+- Edit PDF: text, images, shapes, freehand, highlight, whiteout, sticky notes
+- Sign: draw, type or upload a signature
+- Redact: search & black out, content truly removed
+- Fill forms · Watermark · Page numbers · Crop · Flatten · Metadata
+
+**🔐 Security & extras**
+- Protect with password · Unlock
+- Read PDF aloud · Compare two PDFs
+
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <img src=".github/assets/screenshot-resize.png" alt="Resize Image tool with segmented controls and results" width="880">
+</p>
+
+## 🚀 Get it
+
+| Platform | How |
+|---|---|
+| 🌐 **Web** | Open **[karthik6146.github.io/ToolsJunction](https://karthik6146.github.io/ToolsJunction/)** |
+| 📲 **Install from browser** | In Chrome or Edge, click *Install app* in the address bar. No extra download. |
+| 🪟 **Windows** | Download the installer from **[Releases](https://github.com/Karthik6146/ToolsJunction/releases/latest)** (~108 MB). Windows SmartScreen may warn because the app isn't code-signed: click *More info → Run anyway*. |
+
+## ⚠️ Good to know
+
+- Word, Excel and HTML → PDF are basic-fidelity, and their pages become images (text isn't selectable).
 - Compress PDF and Redact turn the affected pages into images.
-- Edit PDF adds content on top of pages; it does not change existing PDF text (use whiteout + new text).
-- Added text uses standard PDF fonts, which only cover Latin characters.
-- OCR downloads its engine and language data from a CDN on first use; the PDF itself stays local.
-- Not included: PowerPoint to PDF, certificate-based digital signatures.
+- Edit PDF adds content on top of pages; to change existing text, use whiteout plus new text.
+- Added text uses standard PDF fonts, which cover Latin characters only.
+- OCR downloads its engine from a CDN the first time; your PDF stays on your device.
+- Not included yet: PowerPoint → PDF, certificate-based digital signatures.
 
-## Development
+## 🛠️ Development
 
 ```bash
 npm install
@@ -41,16 +122,10 @@ npm run electron:dev # run the desktop app
 npm run dist:win     # build the Windows installer into release/
 ```
 
-Built for slow connections: the home page loads ~28 KB (gzipped), each tool downloads only the libraries it needs, and a service worker caches everything so repeat visits work offline.
+**Stack:** Preact (React API) · TypeScript · Vite · pdf-lib (@cantoo fork) · pdf.js · tesseract.js · mammoth · SheetJS · docx · pptxgenjs · jsPDF · html2canvas · Electron
 
-Tech: Preact (React API) + TypeScript + Vite, pdf-lib (@cantoo fork with encryption), pdf.js, tesseract.js, mammoth, SheetJS, docx, pptxgenjs, jsPDF, html2canvas, Electron.
+**Releases:** every push to `main` tests, builds and publishes the site to the `gh-pages` branch. Pushing a tag like `v1.0.2` builds the Windows installer and attaches it to a GitHub Release.
 
-## Deploy
+## 📄 License
 
-- Push to `main`: GitHub Actions tests, builds and publishes `dist/` to the `gh-pages` branch
-  (Pages source: **Settings → Pages → Deploy from a branch → `gh-pages` / root**).
-- Push a tag like `v1.0.0`: Actions builds the Windows installer and attaches it to a GitHub Release.
-
-## License
-
-MIT
+[MIT](LICENSE) © Karthik Shakyawar
