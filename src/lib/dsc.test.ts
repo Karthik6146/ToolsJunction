@@ -1,5 +1,5 @@
 import { PDFDocument, PDFName, PDFString } from '@cantoo/pdf-lib';
-import { listSigFields, signPdf } from './dsc';
+import { fitParagraphs, listSigFields, signPdf, wrapText } from './dsc';
 
 /** PDF with one empty signature field on page 2, like an MCA e-form. */
 async function formWithSigField() {
@@ -22,6 +22,23 @@ function byteRange(pdf: Uint8Array): number[] {
   const m = [...t.matchAll(/\/ByteRange\s*\[\s*([\d\s]+)\]/g)].at(-1)!;
   return m[1].trim().split(/\s+/).map(Number);
 }
+
+describe('signature stamp text', () => {
+  const mono = { widthOfTextAtSize: (t: string, s: number) => t.length * s * 0.5 };
+  it('wraps words and splits over-long ones', () => {
+    expect(wrapText(mono, 'KARTHIK SHAKYAWAR', 10, 40)).toEqual(['KARTHIK', 'SHAKYAWA', 'R']);
+    expect(wrapText(mono, 'a b c', 10, 100)).toEqual(['a b c']);
+  });
+  it('shrinks instead of breaking a word', () => {
+    const { lines } = fitParagraphs(mono, ['KARTHIK SHAKYAWAR'], 50, 60, 20);
+    expect(lines).toEqual(['KARTHIK', 'SHAKYAWAR']);
+  });
+  it('picks the largest size that fits the box', () => {
+    const { size, lines } = fitParagraphs(mono, ['Digitally signed by', 'KARTHIK SHAKYAWAR'], 60, 30, 12);
+    expect(lines.length * size * 1.15).toBeLessThanOrEqual(30);
+    expect(Math.max(...lines.map((l) => mono.widthOfTextAtSize(l, size)))).toBeLessThanOrEqual(60);
+  });
+});
 
 describe('DSC signing', () => {
   it('lists signature fields in display coordinates', async () => {

@@ -35,21 +35,61 @@ const pdfDate = (d: Date) => {
   return `D:${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${off >= 0 ? '+' : '-'}${p(Math.floor(Math.abs(off) / 60))}'${p(Math.abs(off) % 60)}'`;
 };
 
-/** Visible "Digitally signed by" stamp for the widget. */
+type Font = { widthOfTextAtSize(t: string, s: number): number };
+
+/** Greedy word wrap; words longer than the line are split by characters. */
+export function wrapText(font: Font, text: string, size: number, maxW: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    let wd = word;
+    while (font.widthOfTextAtSize(wd, size) > maxW && wd.length > 1) {
+      let n = wd.length - 1;
+      while (n > 1 && font.widthOfTextAtSize(wd.slice(0, n), size) > maxW) n--;
+      if (line) { lines.push(line); line = ''; }
+      lines.push(wd.slice(0, n));
+      wd = wd.slice(n);
+    }
+    const next = line ? `${line} ${wd}` : wd;
+    if (line && font.widthOfTextAtSize(next, size) > maxW) { lines.push(line); line = wd; } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** Largest font size (<= max) at which the paragraphs, wrapped to w, fit in h. */
+export function fitParagraphs(font: Font, paras: string[], w: number, h: number, max: number) {
+  const words = paras.flatMap((p) => p.split(/\s+/).filter(Boolean));
+  for (let size = max; size > 3; size -= 0.25) {
+    // prefer a smaller size over breaking a word (e.g. a surname) across lines
+    if (words.some((wd) => font.widthOfTextAtSize(wd, size) > w)) continue;
+    const lines = paras.flatMap((p) => wrapText(font, p, size, w));
+    if (lines.length * size * 1.15 <= h) return { size, lines };
+  }
+  return { size: 3, lines: paras.flatMap((p) => wrapText(font, p, 3, w)) };
+}
+
+/** Visible stamp in Acrobat's default layout: big name on the left, signing details on the right. */
 async function appearance(doc: PDFDocument, w: number, h: number, signer: string, when: Date): Promise<PDFRef> {
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const clean = (s: string) => s.replace(/[^\x20-\x7e]/g, '?');
+  const name = signer.replace(/[^\x20-\x7e]/g, '?');
   const p = (n: number) => String(n).padStart(2, '0');
   const off = -when.getTimezoneOffset();
-  const stamp = `${when.getFullYear()}.${p(when.getMonth() + 1)}.${p(when.getDate())} ${p(when.getHours())}:${p(when.getMinutes())}:${p(when.getSeconds())} ${off >= 0 ? '+' : '-'}${p(Math.floor(Math.abs(off) / 60))}'${p(Math.abs(off) % 60)}'`;
-  // same layout as Acrobat's default: name on its own line so long names don't get cut off
-  const lines = ['Digitally signed by', clean(signer), `Date: ${stamp}`];
-  const pad = 2;
-  const widest = Math.max(...lines.map((l) => font.widthOfTextAtSize(l, 1)));
-  const size = Math.max(3, Math.min(10, (w - 2 * pad) / widest, (h - 2 * pad) / (lines.length * 1.2)));
+  const date = `Date: ${when.getFullYear()}.${p(when.getMonth() + 1)}.${p(when.getDate())}`;
+  const time = `${p(when.getHours())}:${p(when.getMinutes())}:${p(when.getSeconds())} ${off >= 0 ? '+' : '-'}${p(Math.floor(Math.abs(off) / 60))}'${p(Math.abs(off) % 60)}'`;
+  const pad = Math.max(1.5, Math.min(w, h) * 0.04);
   const esc = (s: string) => s.replace(/([\\()])/g, '\\$1');
-  const top = (h + lines.length * size * 1.2) / 2 - size; // vertically centred block
-  const ops = `0.1 0.25 0.55 rg BT /F1 ${size.toFixed(2)} Tf ${pad} ${top.toFixed(2)} Td ${(size * 1.2).toFixed(2)} TL ${lines.map((l) => `(${esc(l)}) Tj T*`).join(' ')} ET`;
+  const block = (x: number, colW: number, paras: string[], max: number) => {
+    const { size, lines } = fitParagraphs(font, paras, colW, h - 2 * pad, max);
+    const lh = size * 1.15;
+    const top = (h + lines.length * lh) / 2 - size * 0.95; // vertically centred
+    return lines.map((l, i) => `BT /F1 ${size.toFixed(2)} Tf 1 0 0 1 ${x.toFixed(2)} ${(top - i * lh).toFixed(2)} Tm (${esc(l)}) Tj ET`).join(' ');
+  };
+  const details = ['Digitally signed by', name, date, time];
+  // wide boxes get the two-column Acrobat look; narrow ones just the details
+  const ops = w / h >= 1.6
+    ? `0 0 0 rg ${block(pad, w * 0.44 - pad, [name], h * 0.42)} ${block(w * 0.47, w * 0.53 - pad, details, h * 0.2)}`
+    : `0 0 0 rg ${block(pad, w - 2 * pad, details, h * 0.22)}`;
   const stream = doc.context.stream(ops, {
     Type: 'XObject', Subtype: 'Form', BBox: [0, 0, w, h],
     Resources: { Font: { F1: font.ref } },

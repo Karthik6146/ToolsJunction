@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import * as pdfjs from 'pdfjs-dist';
 import { Field, Status, useRunner } from '../../components/ui';
 import { dscBridge, listSigFields, signPdf, type DscCert, type SigField } from '../../lib/dsc';
@@ -73,20 +73,48 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
   const [sel, setSel] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
   const stage = useRef<HTMLDivElement>(null);
-  // Ctrl + mouse wheel zooms the pages (non-passive so the browser/app zoom doesn't kick in)
+  const userZoomed = useRef(false);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  // point to keep fixed while zooming: page index + fraction within it, and where it sits in the viewport
+  const anchor = useRef<{ page: number; fx: number; fy: number; cx: number; cy: number } | null>(null);
+
+  /** Zoom to `next`, keeping the document point at viewport position (cx, cy) under it (default: centre). */
+  const zoomAt = (next: number, cx?: number, cy?: number) => {
+    const el = stage.current;
+    const z = Math.min(4, Math.max(0.3, Math.round(next * 100) / 100));
+    if (!el || z === zoomRef.current) return;
+    const vx = cx ?? el.clientWidth / 2, vy = cy ?? el.clientHeight / 2;
+    const holders = [...el.querySelectorAll<HTMLElement>('.page-holder')];
+    const y = el.scrollTop + vy, x = el.scrollLeft + vx;
+    let i = holders.findIndex((h) => y < h.offsetTop + h.offsetHeight);
+    if (i < 0) i = holders.length - 1;
+    const h = holders[i];
+    if (h) anchor.current = { page: i, fx: (x - h.offsetLeft) / h.offsetWidth, fy: (y - h.offsetTop) / h.offsetHeight, cx: vx, cy: vy };
+    userZoomed.current = true;
+    setZoom(z);
+  };
+  useLayoutEffect(() => {
+    const a = anchor.current, el = stage.current;
+    anchor.current = null;
+    const h = a && el?.querySelectorAll<HTMLElement>('.page-holder')[a.page];
+    if (!a || !el || !h) return;
+    el.scrollLeft = h.offsetLeft + a.fx * h.offsetWidth - a.cx;
+    el.scrollTop = h.offsetTop + a.fy * h.offsetHeight - a.cy;
+  }, [zoom]);
+  // Ctrl + mouse wheel / trackpad pinch zooms toward the cursor, like Acrobat
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
-      e.preventDefault();
-      userZoomed.current = true;
-      setZoom((z) => Math.min(2.5, Math.max(0.4, Math.round(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1) * 100) / 100)));
+      e.preventDefault(); // stop the browser/app page zoom
+      const r = el.getBoundingClientRect();
+      zoomAt(zoomRef.current * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [pdf.bytes]); // eslint-disable-line react-hooks/exhaustive-deps
-  const userZoomed = useRef(false);
   const widest = pages.length ? Math.max(...pages.map((p) => p.w)) : 0;
   const fitWidth = () => {
     const w = stage.current?.clientWidth;
@@ -274,15 +302,19 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
             </select>
           </Field>}
           {selected?.kind === 'note' && <Field label="Note text"><textarea style={{ minHeight: 80 }} value={selected.text} onChange={(e) => update(selected.id, { text: e.target.value })} autoFocus /></Field>}
-          <Field label="Zoom" value={`${Math.round(zoom * 100)}%`}>
-            <input type="range" min={40} max={250} step={10} value={Math.round(zoom * 100)} onChange={(e) => { userZoomed.current = true; setZoom(+e.target.value / 100); }} />
+          <Field label="Zoom (Ctrl + scroll)" value={`${Math.round(zoom * 100)}%`}>
+            <input type="range" min={30} max={400} step={10} value={Math.round(zoom * 100)} onChange={(e) => zoomAt(+e.target.value / 100)} />
           </Field>
-          <button className="btn sm ghost" onClick={() => { userZoomed.current = false; fitWidth(); }}>↔ Fit to width</button>
+          <div className="chip-grid">
+            <button className="btn sm ghost" onClick={() => zoomAt(zoom / 1.2)} aria-label="Zoom out">−</button>
+            <button className="btn sm ghost" onClick={() => zoomAt(zoom * 1.2)} aria-label="Zoom in">+</button>
+            <button className="btn sm ghost" onClick={() => { userZoomed.current = false; fitWidth(); }}>↔ Fit width</button>
+          </div>
           <button className="btn" disabled={pdf.busy} onClick={save}>{saveLabel}</button>
           <span className="muted">{objs.length} item(s) · Del removes selected</span>
           <Status busy={pdf.busy} error={pdf.error} progress={pdf.progress} />
         </div>
-        <div className="stage" ref={stage}>
+        <div className="stage pdf-stage" ref={stage}>
           {!pages.length && <div className="status busy"><span className="spin" /> Rendering pages…</div>}
           {pages.map((p, i) => (
             <div key={i} className="page-holder" style={{ width: p.w * zoom, height: p.h * zoom }}>
@@ -573,7 +605,7 @@ export function SignPdf() {
           disabled={f.signed}
           title={f.signed ? `${f.name}: signed` : `Signature field ${f.name}`}
           onClick={() => setTarget(f.name)}
-        >{f.signed ? '✓ Signed' : 'Sign here'}</button>
+        >{f.signed ? <span className="sig-badge">✓ Signed</span> : 'Sign here'}</button>
       ))}
       sidebar={({ page, addObj, bytes }) => <>
         <DscPanel bytes={bytes} editor={editor} objs={objs} fields={fields} setFields={setFields} target={target} setTarget={setTarget} />
