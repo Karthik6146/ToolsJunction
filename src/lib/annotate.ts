@@ -6,7 +6,8 @@ import type { Bytes } from './files';
 export type Obj =
   | { id: number; page: number; kind: 'text'; x: number; y: number; w: number; h: number; text: string; size: number; color: string; font: FontName }
   | { id: number; page: number; kind: 'image'; x: number; y: number; w: number; h: number; src: string }
-  | { id: number; page: number; kind: 'rect' | 'whiteout' | 'highlight' | 'redact'; x: number; y: number; w: number; h: number; color: string }
+  // 'sigbox' marks where a DSC signature goes; it is never drawn into the PDF
+  | { id: number; page: number; kind: 'rect' | 'whiteout' | 'highlight' | 'redact' | 'sigbox'; x: number; y: number; w: number; h: number; color: string }
   | { id: number; page: number; kind: 'draw'; x: number; y: number; w: number; h: number; color: string; width: number; pts: [number, number][] }
   | { id: number; page: number; kind: 'note'; x: number; y: number; w: number; h: number; text: string; color: string };
 
@@ -107,6 +108,8 @@ export async function applyObjects(bytes: Bytes, objs: Obj[]): Promise<Bytes> {
       }
       case 'note':
         addNote(doc, page, X(o.x), Y(o.y), o.text, o.color);
+        break;
+      case 'sigbox':
         break;
     }
   }

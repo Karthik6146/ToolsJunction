@@ -46,7 +46,7 @@ export const tools: ToolDef[] = [
   t('convert-image', 'Convert Image', 'image', '⇄', 'Convert between JPG, PNG and WEBP.', img, 'ConvertImage'),
   t('crop-image', 'Crop Image', 'image', '⌗', 'Crop with a draggable box or exact pixels and aspect ratios.', imgCrop, 'CropImage'),
   t('rotate-image', 'Rotate & Flip Image', 'image', '↻', 'Rotate 90°/180° or flip horizontally and vertically.', img, 'RotateImage'),
-  t('image-editor', 'Photo Editor', 'image', '✎', 'Adjust brightness, contrast, filters, add text and draw.', imgEdit, 'ImageEditor'),
+  t('image-editor', 'Photo Editor', 'image', '✎', 'Canva-style editor: filters, text, shapes, stickers, your own images, drawing and frames.', imgEdit, 'ImageEditor'),
   t('image-base64', 'Image to Base64', 'image', '64', 'Encode images as Base64 data URLs.', img, 'ImageBase64'),
 
   t('merge-pdf', 'Merge PDF', 'organize', '⊕', 'Combine several PDFs into one, in the order you want.', org, 'MergePdf'),

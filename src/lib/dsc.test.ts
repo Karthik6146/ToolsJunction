@@ -48,6 +48,12 @@ describe('DSC signing', () => {
     await expect(signPdf(out, { fieldName: 'DSCSign1', signer: 'x' }, fakeSigner([]))).rejects.toThrow(/already signed/);
   });
 
+  it('signs into a new box drawn anywhere on the page', async () => {
+    const out = await signPdf(await formWithSigField(), { box: { page: 0, x: 100, y: 50, w: 180, h: 60 }, signer: 'Very Long Partner Name Here' }, fakeSigner([]));
+    const f = (await listSigFields(out)).find((x) => x.page === 0)!;
+    expect(f).toMatchObject({ page: 0, x: 100, y: 50, w: 180, h: 60, signed: true });
+  });
+
   it('second signature keeps the first one intact', async () => {
     const once = await signPdf(await formWithSigField(), { fieldName: 'DSCSign1', signer: 'A' }, fakeSigner([]));
     const twice = await signPdf(once, { signer: 'B' }, fakeSigner([]));

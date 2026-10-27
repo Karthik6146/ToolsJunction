@@ -38,10 +38,18 @@ const pdfDate = (d: Date) => {
 /** Visible "Digitally signed by" stamp for the widget. */
 async function appearance(doc: PDFDocument, w: number, h: number, signer: string, when: Date): Promise<PDFRef> {
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const lines = [`Digitally signed by ${signer}`, `Date: ${when.toLocaleString()}`];
-  const size = Math.max(4, Math.min(9, h / 3.2, (w - 4) / (Math.max(...lines.map((l) => l.length)) * 0.5)));
-  const esc = (s: string) => s.replace(/[^\x20-\x7e]/g, '?').replace(/([\\()])/g, '\\$1');
-  const ops = `0.2 0.4 0.15 rg BT /F1 ${size.toFixed(2)} Tf 2 ${(h - size - 2).toFixed(2)} Td ${size * 1.25} TL ${lines.map((l) => `(${esc(l)}) Tj T*`).join(' ')} ET`;
+  const clean = (s: string) => s.replace(/[^\x20-\x7e]/g, '?');
+  const p = (n: number) => String(n).padStart(2, '0');
+  const off = -when.getTimezoneOffset();
+  const stamp = `${when.getFullYear()}.${p(when.getMonth() + 1)}.${p(when.getDate())} ${p(when.getHours())}:${p(when.getMinutes())}:${p(when.getSeconds())} ${off >= 0 ? '+' : '-'}${p(Math.floor(Math.abs(off) / 60))}'${p(Math.abs(off) % 60)}'`;
+  // same layout as Acrobat's default: name on its own line so long names don't get cut off
+  const lines = ['Digitally signed by', clean(signer), `Date: ${stamp}`];
+  const pad = 2;
+  const widest = Math.max(...lines.map((l) => font.widthOfTextAtSize(l, 1)));
+  const size = Math.max(3, Math.min(10, (w - 2 * pad) / widest, (h - 2 * pad) / (lines.length * 1.2)));
+  const esc = (s: string) => s.replace(/([\\()])/g, '\\$1');
+  const top = (h + lines.length * size * 1.2) / 2 - size; // vertically centred block
+  const ops = `0.1 0.25 0.55 rg BT /F1 ${size.toFixed(2)} Tf ${pad} ${top.toFixed(2)} Td ${(size * 1.2).toFixed(2)} TL ${lines.map((l) => `(${esc(l)}) Tj T*`).join(' ')} ET`;
   const stream = doc.context.stream(ops, {
     Type: 'XObject', Subtype: 'Form', BBox: [0, 0, w, h],
     Resources: { Font: { F1: font.ref } },
@@ -52,11 +60,11 @@ async function appearance(doc: PDFDocument, w: number, h: number, signer: string
 /**
  * Sign a PDF as an incremental update, so earlier signatures and form data stay valid.
  * `sign` receives the exact bytes covered by /ByteRange and must return a detached CMS (PKCS#7) in DER.
- * Without `fieldName` an invisible signature is added on page 1.
+ * Without `fieldName`, a new field is added: visible at `box` (display coords), else invisible on page 1.
  */
 export async function signPdf(
   bytes: Bytes,
-  o: { fieldName?: string; signer: string; reason?: string; location?: string },
+  o: { fieldName?: string; box?: { page: number; x: number; y: number; w: number; h: number }; signer: string; reason?: string; location?: string },
   sign: (data: Bytes) => Promise<Bytes>,
 ): Promise<Bytes> {
   const doc = await PDFDocument.load(bytes, { forIncrementalUpdate: true, updateMetadata: false });
@@ -85,11 +93,19 @@ export async function signPdf(
       if (r.width > 1 && r.height > 1) w.setNormalAppearance(await appearance(doc, r.width, r.height, o.signer, now));
     }
   } else {
-    const page = doc.getPage(0);
+    const page = doc.getPage(o.box?.page ?? 0);
+    let rect = [0, 0, 0, 0];
+    if (o.box) {
+      // shortcut: display->PDF mapping assumes an unrotated page; rotated pages would need normalizing first
+      const crop = page.getCropBox();
+      const x = crop.x + o.box.x, y = crop.y + crop.height - o.box.y - o.box.h;
+      rect = [x, y, x + o.box.w, y + o.box.h];
+    }
     const widget = ctx.obj({
-      Type: 'Annot', Subtype: 'Widget', FT: 'Sig', Rect: [0, 0, 0, 0], F: 132,
+      Type: 'Annot', Subtype: 'Widget', FT: 'Sig', Rect: rect, F: o.box ? 4 : 132,
       T: PDFHexString.fromText(`Signature${Date.now()}`), V: sigRef, P: page.ref,
     });
+    if (o.box) widget.set(PDFName.of('AP'), ctx.obj({ N: await appearance(doc, o.box.w, o.box.h, o.signer, now) }));
     const wRef = ctx.register(widget);
     const annots = page.node.Annots();
     if (annots) annots.push(wRef);
@@ -127,5 +143,5 @@ export async function signPdf(
 
 /** Desktop-only bridge exposed by electron/preload.cjs. */
 export interface DscCert { thumbprint: string; name: string; issuer: string; expires: string }
-export interface DscBridge { list(): Promise<DscCert[]>; sign(thumbprint: string, data: Bytes): Promise<Bytes> }
+export interface DscBridge { list(): Promise<DscCert[]>; sign(thumbprint: string, data: Bytes, pin: string): Promise<Bytes> }
 export const dscBridge = (): DscBridge | undefined => (window as unknown as { dsc?: DscBridge }).dsc;

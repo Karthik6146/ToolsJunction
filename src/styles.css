@@ -31,11 +31,12 @@
     --muted: #949cab;
     --border: #252a33;
     --border-strong: #353b47;
-    --accent: #ff5a52;
-    --accent-hover: #ff7069;
-    --accent-ink: #1a0503;
-    --accent-soft: rgb(255 90 82 / 0.12);
-    --ring: rgb(255 90 82 / 0.32);
+    /* deeper red with white text: easier on the eyes than a neon fill on dark backgrounds */
+    --accent: #d23b34;
+    --accent-hover: #e04a43;
+    --accent-ink: #ffffff;
+    --accent-soft: rgb(226 74 67 / 0.14);
+    --ring: rgb(226 74 67 / 0.35);
     --ok: #4ade80;
     --err: #fca5a5;
     --err-soft: rgb(248 113 113 / 0.12);
@@ -63,6 +64,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 10;
 }
+.top-left { display: flex; align-items: center; gap: 10px; }
+.back-btn {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  transition: background-color 150ms ease, transform 160ms var(--ease-out);
+}
+.back-btn:hover { background: var(--border); }
+.back-btn:active { transform: scale(0.94); }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 19px; letter-spacing: -0.01em; }
 .brand b { color: var(--accent); }
 .logo {
@@ -175,6 +184,8 @@ input[type='range']::-webkit-slider-thumb {
 }
 input[type='range']::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); }
 input[type='range']:active::-webkit-slider-thumb { transform: scale(1.15); }
+input[type='range']:focus-visible { box-shadow: none; }
+input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--ring); }
 
 /* color swatch */
 input[type='color'] {
@@ -280,7 +291,8 @@ textarea {
 }
 .toolbar > b { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
 .toolbar .btn.ghost { justify-content: flex-start; }
-.toolbar button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* active tool: tinted, not a full red fill, so the primary action button stays the loudest thing */
+.toolbar button.on { background: var(--accent-soft); color: var(--text); border-color: var(--accent); font-weight: 600; }
 .stage { overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 .page-holder { position: relative; margin: 0 auto 24px; box-shadow: var(--shadow); touch-action: none; background: #fff; }
 .ov { position: absolute; inset: 0; }
@@ -292,6 +304,17 @@ textarea {
 .obj textarea:focus { box-shadow: none; }
 
 .tool:has(.editor-wrap) { max-width: 1440px; }
+
+/* photo editor */
+.photo-canvas { display: block; max-width: 100%; max-height: 78vh; margin: 0 auto; touch-action: none; box-shadow: var(--shadow);
+  background: repeating-conic-gradient(#d4d4d8 0% 25%, #f4f4f5 0% 50%) 0 0 / 16px 16px; }
+.chip-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.toolbar .seg { height: auto; flex-wrap: wrap; }
+.toolbar .seg button { flex: 1 0 auto; height: 30px; padding: 0 8px; }
+.sticker-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.sticker-grid button { font-size: 20px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; transition: transform 160ms var(--ease-out); }
+.sticker-grid button:active { transform: scale(0.92); }
+.layer-panel { display: grid; gap: 8px; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--accent); background: var(--accent-soft); }
 
 /* signature fields found in the PDF (like Adobe's "sign here" tags) */
 .sigbox {

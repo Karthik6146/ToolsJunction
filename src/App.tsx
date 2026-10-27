@@ -1,11 +1,22 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { Link, Route, Routes, useParams } from 'react-router-dom';
+import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CATEGORIES, catOf, toolById, tools, type Category } from './tools/registry';
 
 function Header() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  // 'default' key = first page of this visit, so there is no history to go back to
+  const back = () => (location.key !== 'default' ? navigate(-1) : navigate('/'));
   return (
     <header className="top">
-      <Link to="/" className="brand"><span className="logo">TJ</span><span>Tools<b>Junction</b></span></Link>
+      <div className="top-left">
+        {location.pathname !== '/' && (
+          <button className="back-btn" onClick={back} aria-label="Go back" title="Back">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+          </button>
+        )}
+        <Link to="/" className="brand"><span className="logo">TJ</span><span>Tools<b>Junction</b></span></Link>
+      </div>
       <span className="tag">Free · Private · Runs on your device</span>
     </header>
   );

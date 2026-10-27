@@ -8,13 +8,13 @@ import { replaceWithRaster } from '../../lib/pdf';
 import { canvasToBytes, openPdfjs, renderPage, type PDFDocumentProxy } from '../../lib/pdfjs';
 import { PdfPicker, outName, usePdf } from './common';
 
-type Mode = 'select' | 'text' | 'rect' | 'whiteout' | 'highlight' | 'draw' | 'note' | 'redact';
+type Mode = 'select' | 'text' | 'rect' | 'whiteout' | 'highlight' | 'draw' | 'note' | 'redact' | 'sigbox';
 type Pending = { src: string; w: number; h: number } | null;
 type PageInfo = { w: number; h: number; img: string };
 
 const MODE_LABEL: Record<Mode, string> = {
   select: '↖ Select / move', text: 'T Add text', rect: '▭ Rectangle', whiteout: '◻ Whiteout', highlight: '▬ Highlight',
-  draw: '✎ Freehand', note: '💬 Sticky note', redact: '█ Redact area',
+  draw: '✎ Freehand', note: '💬 Sticky note', redact: '█ Redact area', sigbox: '▢ Draw DSC signature box',
 };
 const CSS_FONT: Record<FontName, string> = {
   Helvetica: 'Helvetica, Arial, sans-serif', 'Helvetica-Bold': 'Helvetica, Arial, sans-serif',
@@ -73,6 +73,19 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
   const [sel, setSel] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
   const stage = useRef<HTMLDivElement>(null);
+  // Ctrl + mouse wheel zooms the pages (non-passive so the browser/app zoom doesn't kick in)
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      userZoomed.current = true;
+      setZoom((z) => Math.min(2.5, Math.max(0.4, Math.round(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1) * 100) / 100)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [pdf.bytes]); // eslint-disable-line react-hooks/exhaustive-deps
   const userZoomed = useRef(false);
   const widest = pages.length ? Math.max(...pages.map((p) => p.w)) : 0;
   const fitWidth = () => {
@@ -143,7 +156,8 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
     const o: Obj = mode === 'draw'
       ? { id, page, kind: 'draw', x: 0, y: 0, w: pages[page].w, h: pages[page].h, color, width: Math.max(1, size / 8), pts: [[x, y]] }
       : { id, page, kind: mode, x, y, w: 0, h: 0, color: mode === 'highlight' && color === '#e5322d' ? '#ffeb3b' : color };
-    setObjs((os) => [...os, o]);
+    // only one DSC box at a time: drawing a new one replaces the old
+    setObjs((os) => [...(mode === 'sigbox' ? os.filter((q) => q.kind !== 'sigbox') : os), o]);
     drag.current = { id, kind: mode === 'draw' ? 'draw' : 'create', sx: x, sy: y, o };
   };
 
@@ -225,6 +239,7 @@ function PdfCanvasEditor({ modes, sidebar, saveLabel, onSave, pending, setPendin
       whiteout: { background: '#fff', outline: '1px dashed #bbb' },
       highlight: { background: 'color' in o ? o.color : '', opacity: 0.35 },
       redact: { background: '#000' },
+      sigbox: { border: '2px dashed #2563eb', background: 'rgb(37 99 235 / 0.15)' },
     };
     return (
       <div key={o.id} className={`obj ${isSel ? 'sel' : ''}`} style={{ ...style, ...bg[o.kind] }} onPointerDown={(e) => startObj(e, o, 'move')}>
@@ -446,6 +461,7 @@ function DscPanel({ bytes, editor, objs, fields, setFields, target, setTarget }:
   const [certs, setCerts] = useState<DscCert[] | null>(null);
   const [thumb, setThumb] = useState('');
   const [reason, setReason] = useState('');
+  const [pin, setPin] = useState('');
   const { busy, error, progress, setProgress, run } = useRunner();
 
   useEffect(() => {
@@ -460,6 +476,10 @@ function DscPanel({ bytes, editor, objs, fields, setFields, target, setTarget }:
 
   const empty = fields.filter((f) => !f.signed);
   const unique = [...new Set(empty.map((f) => f.name))];
+  const box = objs.find((o) => o.kind === 'sigbox');
+  const BOX = '__box__';
+  // drawing a box means "sign here"
+  useEffect(() => { if (box) setTarget(BOX); }, [box?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!bridge) {
     return <>
@@ -482,13 +502,21 @@ function DscPanel({ bytes, editor, objs, fields, setFields, target, setTarget }:
     const ed = editor.current;
     const cert = certs!.find((c) => c.thumbprint === thumb)!;
     let input = bytes!;
-    if (objs.length) {
+    const drawn = objs.filter((o) => o.kind !== 'sigbox');
+    if (drawn.length) {
       // drawn items rewrite the file, which would invalidate signatures already in it
       if (fields.some((f) => f.signed)) throw new Error('This PDF already has a signature. Remove drawn items, or save them before anyone signs.');
-      input = await applyObjects(input, objs);
+      input = await applyObjects(input, drawn);
     }
-    setProgress('Enter your DSC PIN in the token window…');
-    const out = await signPdf(input, { fieldName: target || undefined, signer: cert.name, reason: reason || undefined }, (d) => bridge.sign(thumb, d));
+    if (target === BOX && !box) throw new Error('Draw a signature box on the page first');
+    const where = target === BOX ? { box: { page: box!.page, x: box!.x, y: box!.y, w: box!.w, h: box!.h } } : { fieldName: target || undefined };
+    setProgress('Signing… enter your PIN in the token window if it opens');
+    let out: Bytes;
+    try {
+      out = await signPdf(input, { ...where, signer: cert.name, reason: reason || undefined }, (d) => bridge.sign(thumb, d, pin));
+    } finally {
+      setPin('');
+    }
     const name = outName(ed.file, 'signed');
     download(out, name, PDF_TYPE);
     // continue from the signed file so a second partner signs on top of the first
@@ -507,14 +535,21 @@ function DscPanel({ bytes, editor, objs, fields, setFields, target, setTarget }:
       </Field>
       <Field label="Sign in">
         <select value={target} onChange={(e) => setTarget(e.target.value)}>
+          {box && <option value={BOX}>The box I drew (page {box.page + 1})</option>}
           {unique.map((n) => <option key={n} value={n}>Field: {n}</option>)}
           <option value="">New invisible signature</option>
         </select>
       </Field>
       <Field label="Reason (optional)"><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Approved" /></Field>
+      <Field label="Token PIN (optional)">
+        <input type="password" autoComplete="off" value={pin} onChange={(e) => setPin(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sign()} placeholder="Leave empty to use the token's window" />
+      </Field>
       <button className="btn sm" disabled={busy || !thumb} onClick={sign}>✍ Sign with DSC</button>
     </>}
-    {fields.length > 0 && <span className="muted">{empty.length} of {fields.length} signature field(s) empty · click a blue box to choose it</span>}
+    <span className="muted">
+      {fields.length > 0 && `${empty.length} of ${fields.length} signature field(s) empty: click a blue box to choose it. `}
+      Or use “Draw DSC signature box” to sign anywhere, any size.
+    </span>
     <Status busy={busy} error={error} progress={progress} />
   </>;
 }
@@ -527,7 +562,7 @@ export function SignPdf() {
   const editor = useRef<EditorHandle>({ bytes: null, doc: null, file: null, setFile: () => {} });
   return (
     <PdfCanvasEditor
-      modes={['select', 'text']}
+      modes={['select', 'text', 'sigbox']}
       saveLabel="Save signed PDF"
       pending={pending} setPending={setPending} objs={objs} setObjs={setObjs} bytesRef={editor}
       overlay={(page, z) => fields.filter((f) => f.page === page).map((f, i) => (

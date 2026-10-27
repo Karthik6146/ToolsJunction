@@ -5,7 +5,7 @@ const dsc = require('./dsc.cjs');
 // only our own bundled page may call native signing
 const trusted = (e) => e.senderFrame && e.senderFrame.url.startsWith('file:');
 ipcMain.handle('dsc:list', (e) => (trusted(e) ? dsc.list() : Promise.reject(new Error('Not allowed'))));
-ipcMain.handle('dsc:sign', (e, thumb, data) => (trusted(e) ? dsc.sign(thumb, data) : Promise.reject(new Error('Not allowed'))));
+ipcMain.handle('dsc:sign', (e, thumb, data, pin) => (trusted(e) ? dsc.sign(thumb, data, pin) : Promise.reject(new Error('Not allowed'))));
 
 function createWindow() {
   const win = new BrowserWindow({
