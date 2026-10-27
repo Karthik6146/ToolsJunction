@@ -314,6 +314,33 @@ textarea {
 .sticker-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .sticker-grid button { font-size: 20px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; transition: transform 160ms var(--ease-out); }
 .sticker-grid button:active { transform: scale(0.92); }
+.photo-topbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.canvas-wrap { position: relative; margin: 0 auto; }
+.canvas-wrap .photo-canvas { max-width: none; max-height: none; }
+.float-bar {
+  position: absolute; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; z-index: 2;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+.fbtn { width: 32px; height: 32px; border: 0; border-radius: 7px; background: transparent; color: var(--text); cursor: pointer; font-size: 15px; transition: background-color 150ms ease, transform 160ms var(--ease-out); }
+.fbtn:hover { background: var(--surface-2); }
+.fbtn:active { transform: scale(0.92); }
+.fbtn.on { background: var(--accent-soft); }
+.upload-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.upload-item { position: relative; }
+.upload-thumb { display: block; width: 100%; aspect-ratio: 1; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: grab;
+  background: repeating-conic-gradient(#d4d4d8 0% 25%, #f4f4f5 0% 50%) 0 0 / 12px 12px; }
+.upload-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.upload-del { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity 150ms ease; }
+.upload-item:hover .upload-del, .upload-del:focus-visible { opacity: 1; }
+.start-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+.start-grid h3 { margin: 0 0 10px; }
+.start-grid .panel { align-items: stretch; }
+.size-card { align-content: end; }
+.size-card { display: grid; gap: 4px; justify-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); cursor: pointer; transition: border-color 150ms ease, transform 160ms var(--ease-out); }
+.size-card:hover { border-color: var(--accent); }
+.size-card:active { transform: scale(0.97); }
+.size-thumb { width: 44px; max-height: 60px; border: 2px solid var(--border-strong); border-radius: 4px; background: var(--surface); }
+@media (hover: none) { .upload-del { opacity: 1; } }
 .layer-panel { display: grid; gap: 8px; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--accent); background: var(--accent-soft); }
 
 /* signature fields found in the PDF (like Adobe's "sign here" tags) */

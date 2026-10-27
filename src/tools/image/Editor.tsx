@@ -1,168 +1,128 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { FileDrop, Field, Segmented, Status, Toggle, useRunner } from '../../components/ui';
 import { baseName, download } from '../../lib/files';
 import { EXT, canvasToBlob, loadImage } from '../../lib/image';
 import { rotateFlip } from './ImageTools';
-
-const ADJ = {
-  brightness: { label: 'Brightness', min: 0, max: 200, def: 100, unit: '%' },
-  contrast: { label: 'Contrast', min: 0, max: 200, def: 100, unit: '%' },
-  saturate: { label: 'Saturation', min: 0, max: 300, def: 100, unit: '%' },
-  'hue-rotate': { label: 'Hue', min: 0, max: 360, def: 0, unit: 'deg' },
-  blur: { label: 'Blur', min: 0, max: 20, def: 0, unit: 'px' },
-  grayscale: { label: 'Grayscale', min: 0, max: 100, def: 0, unit: '%' },
-  sepia: { label: 'Sepia', min: 0, max: 100, def: 0, unit: '%' },
-  invert: { label: 'Invert', min: 0, max: 100, def: 0, unit: '%' },
-} as const;
-type AdjKey = keyof typeof ADJ;
-const defaults = () => Object.fromEntries(Object.entries(ADJ).map(([k, v]) => [k, v.def])) as Record<AdjKey, number>;
-const PRESETS: Record<string, Partial<Record<AdjKey, number>>> = {
-  Original: {}, Vivid: { saturate: 160, contrast: 115 }, Mono: { grayscale: 100, contrast: 120 },
-  Vintage: { sepia: 60, contrast: 90, brightness: 105 }, Cool: { 'hue-rotate': 190, saturate: 120 },
-  Fade: { contrast: 80, brightness: 115, saturate: 70 }, Drama: { contrast: 150, saturate: 80, brightness: 95 },
-  Warm: { sepia: 25, saturate: 130, brightness: 105 },
-};
-
-type Common = { id: number; x: number; y: number; w: number; h: number; rot: number; opacity: number };
-type TextL = Common & { kind: 'text'; text: string; font: string; size: number; color: string; bold: boolean; italic: boolean; align: 'left' | 'center' | 'right'; stroke: string | null; shadow: boolean; bg: string | null };
-type ImageL = Common & { kind: 'image'; img: HTMLImageElement; radius: number };
-type ShapeL = Common & { kind: 'shape'; shape: 'rect' | 'ellipse' | 'line' | 'arrow'; fill: string | null; stroke: string; strokeW: number; radius: number };
-type DrawL = Common & { kind: 'draw'; pts: [number, number][]; color: string; width: number; ow: number; oh: number };
-type Layer = TextL | ImageL | ShapeL | DrawL;
-type Look = { vignette: number; radius: number; border: number; borderColor: string };
-const LOOK0: Look = { vignette: 0, radius: 0, border: 0, borderColor: '#ffffff' };
+import {
+  ADJ, LOOK0, NO_CROP, PRESETS, defaultAdj, fitText, imageHeight, removePlainBackground, render, solidCanvas, toLocal,
+  type Adj, type AdjKey, type DrawL, type ImageL, type Layer, type Look, type ShapeL,
+} from './photo/model';
+import { deleteUpload, fileToImages, listUploads, saveUpload, type Upload } from './photo/uploads';
 
 const FONTS = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Impact', 'Trebuchet MS', 'Verdana', 'Comic Sans MS', 'Segoe Script', 'Segoe UI'];
 const STICKERS = ['⭐', '❤️', '🔥', '✅', '🎉', '😀', '👍', '📍', '💡', '⚡', '🌸', '🎁'];
+const SIZES: [string, number, number][] = [
+  ['A4 document', 1240, 1754], ['Instagram post', 1080, 1080], ['Instagram story', 1080, 1920],
+  ['Presentation', 1920, 1080], ['YouTube thumbnail', 1280, 720], ['Poster', 1800, 2400],
+];
+const IMAGE_FX: AdjKey[] = ['brightness', 'contrast', 'saturate', 'grayscale', 'sepia', 'blur'];
+type Tab = 'uploads' | 'text' | 'elements' | 'draw' | 'adjust' | 'frame';
 let uid = 1;
 
-const fontStr = (t: TextL) => `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${t.size}px "${t.font}", sans-serif`;
-const measureCtx = () => document.createElement('canvas').getContext('2d')!;
-function fitText(t: TextL): TextL {
-  const m = measureCtx();
-  m.font = fontStr(t);
-  const lines = t.text.split('\n');
-  const pad = t.size * 0.2;
-  return { ...t, w: Math.max(t.size, ...lines.map((l) => m.measureText(l).width)) + 2 * pad, h: lines.length * t.size * 1.25 + 2 * pad };
-}
+const newImageLayer = (img: ImageL['img'], W: number, H: number, cx = W / 2, cy = H / 2): ImageL => {
+  const nw = img instanceof HTMLImageElement ? img.naturalWidth : img.width;
+  const nh = img instanceof HTMLImageElement ? img.naturalHeight : img.height;
+  const w = Math.min(W * 0.5, nw), h = (w * nh) / nw;
+  return { id: uid++, kind: 'image', img, x: cx - w / 2, y: cy - h / 2, w, h, rot: 0, opacity: 1, radius: 0, crop: NO_CROP, border: 0, borderColor: '#ffffff', fx: {} };
+};
 
-/** Draws a layer into its own box at 0,0..w,h (caller has translated/rotated). */
-function drawLayer(ctx: CanvasRenderingContext2D, l: Layer) {
-  if (l.kind === 'text') {
-    const pad = l.size * 0.2;
-    if (l.bg) { ctx.fillStyle = l.bg; ctx.beginPath(); ctx.roundRect(0, 0, l.w, l.h, l.size * 0.25); ctx.fill(); }
-    ctx.font = fontStr(l);
-    ctx.textBaseline = 'top';
-    ctx.textAlign = l.align;
-    const x = l.align === 'left' ? pad : l.align === 'center' ? l.w / 2 : l.w - pad;
-    l.text.split('\n').forEach((line, i) => {
-      const y = pad + i * l.size * 1.25;
-      if (l.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = l.size * 0.15; ctx.shadowOffsetY = l.size * 0.06; }
-      if (l.stroke) { ctx.lineWidth = Math.max(1, l.size * 0.08); ctx.strokeStyle = l.stroke; ctx.lineJoin = 'round'; ctx.strokeText(line, x, y); }
-      ctx.fillStyle = l.color;
-      ctx.fillText(line, x, y);
-      ctx.shadowColor = 'transparent';
-    });
-  } else if (l.kind === 'image') {
-    ctx.beginPath(); ctx.roundRect(0, 0, l.w, l.h, (l.radius / 100) * Math.min(l.w, l.h) / 2); ctx.clip();
-    ctx.drawImage(l.img, 0, 0, l.w, l.h);
-  } else if (l.kind === 'shape') {
-    const s = l.strokeW;
-    ctx.lineWidth = s; ctx.strokeStyle = l.stroke; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    if (l.shape === 'rect') ctx.roundRect(s / 2, s / 2, l.w - s, l.h - s, (l.radius / 100) * Math.min(l.w, l.h) / 2);
-    else if (l.shape === 'ellipse') ctx.ellipse(l.w / 2, l.h / 2, Math.max(1, l.w / 2 - s / 2), Math.max(1, l.h / 2 - s / 2), 0, 0, Math.PI * 2);
-    else {
-      const head = l.shape === 'arrow' ? Math.min(l.w * 0.4, s * 4) : 0;
-      ctx.moveTo(0, l.h / 2); ctx.lineTo(l.w - head * 0.6, l.h / 2);
-      if (head) { ctx.stroke(); ctx.beginPath(); ctx.fillStyle = l.stroke; ctx.moveTo(l.w, l.h / 2); ctx.lineTo(l.w - head, l.h / 2 - head * 0.6); ctx.lineTo(l.w - head, l.h / 2 + head * 0.6); ctx.closePath(); ctx.fill(); return; }
-    }
-    if (l.fill && (l.shape === 'rect' || l.shape === 'ellipse')) { ctx.fillStyle = l.fill; ctx.fill(); }
-    if (s > 0) ctx.stroke();
-  } else {
-    ctx.scale(l.w / l.ow, l.h / l.oh);
-    ctx.strokeStyle = l.color; ctx.lineWidth = l.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); l.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
-  }
-}
-
-const filterOf = (a: Record<AdjKey, number>) => (Object.keys(ADJ) as AdjKey[]).map((k) => `${k}(${a[k]}${ADJ[k].unit})`).join(' ');
-
-function render(ctx: CanvasRenderingContext2D, base: HTMLCanvasElement, adj: Record<AdjKey, number>, layers: Layer[], look: Look, sel: Layer | null, scale: number) {
-  const W = base.width, H = base.height;
-  const corner = (look.radius / 100) * Math.min(W, H) / 2;
-  ctx.clearRect(0, 0, W, H);
-  ctx.save();
-  if (corner) { ctx.beginPath(); ctx.roundRect(0, 0, W, H, corner); ctx.clip(); }
-  ctx.filter = filterOf(adj);
-  ctx.drawImage(base, 0, 0);
-  ctx.filter = 'none';
-  if (look.vignette) {
-    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) / 2);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${look.vignette / 100})`);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  }
-  for (const l of layers) {
-    ctx.save();
-    ctx.globalAlpha = l.opacity;
-    ctx.translate(l.x + l.w / 2, l.y + l.h / 2); ctx.rotate((l.rot * Math.PI) / 180); ctx.translate(-l.w / 2, -l.h / 2);
-    drawLayer(ctx, l);
-    ctx.restore();
-  }
-  if (look.border) {
-    const b = (look.border / 100) * Math.min(W, H) * 0.15;
-    ctx.lineWidth = b * 2; ctx.strokeStyle = look.borderColor;
-    ctx.beginPath(); ctx.roundRect(0, 0, W, H, corner); ctx.stroke();
-  }
-  ctx.restore();
-  if (sel) {
-    ctx.save();
-    ctx.translate(sel.x + sel.w / 2, sel.y + sel.h / 2); ctx.rotate((sel.rot * Math.PI) / 180); ctx.translate(-sel.w / 2, -sel.h / 2);
-    ctx.setLineDash([6 / scale, 4 / scale]); ctx.lineWidth = 1.5 / scale; ctx.strokeStyle = '#3b82f6';
-    ctx.strokeRect(0, 0, sel.w, sel.h);
-    const s = 14 / scale;
-    ctx.setLineDash([]); ctx.fillStyle = '#ffffff'; ctx.fillRect(sel.w - s / 2, sel.h - s / 2, s, s); ctx.strokeRect(sel.w - s / 2, sel.h - s / 2, s, s);
-    ctx.restore();
-  }
-}
-
-/** Point in a layer's own (unrotated) box coordinates. */
-function toLocal(l: Layer, px: number, py: number): [number, number] {
-  const a = (-l.rot * Math.PI) / 180, dx = px - (l.x + l.w / 2), dy = py - (l.y + l.h / 2);
-  return [dx * Math.cos(a) - dy * Math.sin(a) + l.w / 2, dx * Math.sin(a) + dy * Math.cos(a) + l.h / 2];
+function StartScreen({ onPhoto, onBlank, busy, error }: { onPhoto: (f: File) => void; onBlank: (w: number, h: number, bg: string) => void; busy: boolean; error: string }) {
+  const [w, setW] = useState(1080);
+  const [h, setH] = useState(1080);
+  const [bg, setBg] = useState('#ffffff');
+  return (
+    <div className="start-grid">
+      <div>
+        <h3>Edit a photo</h3>
+        <FileDrop accept="image/*,.pdf,application/pdf" onFiles={(f) => onPhoto(f[0])} label="Open image or PDF" />
+      </div>
+      <div className="panel" style={{ marginTop: 0, alignContent: 'start' }}>
+        <h3 style={{ gridColumn: '1 / -1', margin: 0 }}>Or start a blank design</h3>
+        {SIZES.map(([n, sw, sh]) => (
+          <button key={n} className="size-card" onClick={() => onBlank(sw, sh, bg)}>
+            <span className="size-thumb" style={{ aspectRatio: `${sw} / ${sh}` }} />
+            <b>{n}</b><span className="muted">{sw} × {sh}</span>
+          </button>
+        ))}
+        <Field label="Width (px)"><input type="number" min={50} max={8000} value={w} onChange={(e) => setW(+e.target.value)} /></Field>
+        <Field label="Height (px)"><input type="number" min={50} max={8000} value={h} onChange={(e) => setH(+e.target.value)} /></Field>
+        <Field label="Background"><input type="color" value={bg} onChange={(e) => setBg(e.target.value)} /></Field>
+        <button className="btn" onClick={() => onBlank(Math.min(8000, Math.max(50, w)), Math.min(8000, Math.max(50, h)), bg)}>Create custom size</button>
+      </div>
+      <Status busy={busy} error={error} />
+    </div>
+  );
 }
 
 export function ImageEditor() {
-  const [file, setFile] = useState<File | null>(null);
+  const [name, setName] = useState('design');
   const [base, setBase] = useState<HTMLCanvasElement | null>(null);
-  const [adj, setAdj] = useState(defaults);
+  const [blankBg, setBlankBg] = useState<string | null>(null); // set when the design started blank
+  const [adj, setAdj] = useState(defaultAdj);
   const [look, setLook] = useState<Look>(LOOK0);
   const [layers, setLayers] = useState<Layer[]>([]);
   const [past, setPast] = useState<Layer[][]>([]);
+  const [future, setFuture] = useState<Layer[][]>([]);
   const [selId, setSelId] = useState<number | null>(null);
-  const [tab, setTab] = useState<'adjust' | 'text' | 'elements' | 'draw' | 'frame'>('adjust');
-  const [drawing, setDrawing] = useState(false);
+  const [tab, setTab] = useState<Tab>('uploads');
   const [ink, setInk] = useState('#ff3b30');
   const [inkW, setInkW] = useState(8);
   const [fmt, setFmt] = useState('image/png');
+  const [zoom, setZoom] = useState(1);
+  const [fitW, setFitW] = useState(800);
+  const [ups, setUps] = useState<(Upload & { url: string })[]>([]);
+  const [tol, setTol] = useState(18);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
-  const imgInput = useRef<HTMLInputElement>(null);
+  const uploadInput = useRef<HTMLInputElement>(null);
+  const replaceInput = useRef<HTMLInputElement>(null);
   const drag = useRef<{ kind: 'move' | 'resize' | 'draw'; start: Layer; px: number; py: number } | null>(null);
-  const { busy, error, run } = useRunner();
-
-  useEffect(() => {
-    if (!file) return;
-    run(async () => {
-      const img = await loadImage(file);
-      setBase(rotateFlip(img, 0, false, false));
-      setAdj(defaults()); setLook(LOOK0); setLayers([]); setPast([]); setSelId(null);
-    });
-  }, [file, run]);
+  const { busy, error, setError, run } = useRunner();
+  const drawing = tab === 'draw';
 
   const sel = layers.find((l) => l.id === selId) ?? null;
   const W = base?.width ?? 1, H = base?.height ?? 1;
   const scale = () => (canvas.current ? canvas.current.clientWidth / W : 1);
+
+  // uploads library (kept in this browser)
+  useEffect(() => {
+    listUploads().then((list) => setUps(list.map((u) => ({ ...u, url: URL.createObjectURL(u.blob) }))));
+  }, []);
+  useEffect(() => () => ups.forEach((u) => URL.revokeObjectURL(u.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const start = (c: HTMLCanvasElement, bg: string | null, n: string) => {
+    setBase(c); setBlankBg(bg); setName(n); setAdj(defaultAdj()); setLook(LOOK0);
+    setLayers([]); setPast([]); setFuture([]); setSelId(null); setZoom(1);
+  };
+  const openPhoto = (f: File) => run(async () => {
+    const [first] = await fileToImages(f);
+    const img = await loadImage(first.blob);
+    start(rotateFlip(img, 0, false, false), null, baseName(f.name));
+  });
+
+  // fit the design to the stage; zoom multiplies it
+  useEffect(() => {
+    const fit = () => {
+      const el = stage.current;
+      if (!el || !base) return;
+      setFitW(Math.max(120, Math.min(el.clientWidth - 32, (window.innerHeight * 0.72 * base.width) / base.height)));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [base]);
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => Math.min(4, Math.max(0.2, Math.round(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1) * 100) / 100)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [base]);
 
   useEffect(() => {
     const c = canvas.current;
@@ -171,61 +131,89 @@ export function ImageEditor() {
     render(c.getContext('2d')!, base, adj, layers, look, drawing ? null : sel, scale());
   });
 
-  // history: snapshot before each change the user would want to undo
-  const commit = (next: Layer[]) => { setPast((p) => [...p.slice(-49), layers]); setLayers(next); };
-  const undo = () => { if (!past.length) return; setLayers(past[past.length - 1]); setPast((p) => p.slice(0, -1)); };
+  // history: layers only; adjustments and frame are plain settings
+  const snapshot = () => { setPast((p) => [...p.slice(-49), layers]); setFuture([]); };
+  const commit = (next: Layer[]) => { snapshot(); setLayers(next); };
+  const undo = () => { if (!past.length) return; setFuture((f) => [layers, ...f]); setLayers(past[past.length - 1]); setPast((p) => p.slice(0, -1)); };
+  const redo = () => { if (!future.length) return; setPast((p) => [...p, layers]); setLayers(future[0]); setFuture((f) => f.slice(1)); };
   const patch = (p: Partial<Layer>) => {
     if (!sel) return;
     const next = { ...sel, ...p } as Layer;
     commit(layers.map((l) => (l.id === sel.id ? (next.kind === 'text' ? fitText(next) : next) : l)));
   };
-  const add = (l: Layer) => { commit([...layers, l]); setSelId(l.id); setDrawing(false); };
+  const add = (l: Layer) => { commit([...layers, l]); setSelId(l.id); if (tab === 'draw') setTab('elements'); };
   const remove = () => { if (sel) { commit(layers.filter((l) => l.id !== sel.id)); setSelId(null); } };
-  const duplicate = () => { if (sel) add({ ...sel, id: uid++, x: sel.x + W * 0.03, y: sel.y + W * 0.03 }); };
-  const reorder = (dir: 1 | -1) => {
+  const duplicate = () => { if (sel) add({ ...sel, id: uid++, locked: false, x: sel.x + W * 0.03, y: sel.y + W * 0.03 }); };
+  const reorder = (dir: 1 | -1 | 'top' | 'bottom') => {
     if (!sel) return;
-    const i = layers.indexOf(sel), j = Math.max(0, Math.min(layers.length - 1, i + dir));
-    const next = [...layers]; next.splice(i, 1); next.splice(j, 0, sel); commit(next);
+    const rest = layers.filter((l) => l !== sel);
+    const i = layers.indexOf(sel);
+    const j = dir === 'top' ? rest.length : dir === 'bottom' ? 0 : Math.max(0, Math.min(rest.length, i + dir));
+    commit([...rest.slice(0, j), sel, ...rest.slice(j)]);
+  };
+  const align = (where: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+    if (!sel) return;
+    patch({ left: { x: 0 }, center: { x: (W - sel.w) / 2 }, right: { x: W - sel.w }, top: { y: 0 }, middle: { y: (H - sel.h) / 2 }, bottom: { y: H - sel.h } }[where]);
+  };
+  const fillPage = () => {
+    if (sel?.kind !== 'image') return;
+    const ratio = imageHeight(sel, 1);
+    const w = Math.max(W, H / ratio), h = w * ratio;
+    patch({ w, h, x: (W - w) / 2, y: (H - h) / 2, rot: 0 });
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) return;
+      if (!base || ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) return;
+      const k = e.key.toLowerCase();
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); remove(); }
-      if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
-      if (e.ctrlKey && e.key.toLowerCase() === 'd' && sel) { e.preventDefault(); duplicate(); }
-      if (e.key === 'Escape') setSelId(null);
+      else if (e.ctrlKey && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+      else if (e.ctrlKey && k === 'z') { e.preventDefault(); undo(); }
+      else if (e.ctrlKey && k === 'd' && sel) { e.preventDefault(); duplicate(); }
+      else if (e.key === 'Escape') setSelId(null);
+      else if (sel && !sel.locked && e.key.startsWith('Arrow')) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        patch({ x: sel.x + (e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0), y: sel.y + (e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0) });
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
 
   const addText = (kind: 'heading' | 'sub' | 'body') => {
-    const size = Math.round(W * { heading: 0.08, sub: 0.05, body: 0.032 }[kind]);
-    const t = fitText({ id: uid++, kind: 'text', x: 0, y: 0, w: 0, h: 0, rot: 0, opacity: 1, text: { heading: 'Add a heading', sub: 'Add a subheading', body: 'Add a little bit of body text' }[kind], font: kind === 'heading' ? 'Impact' : 'Arial', size, color: '#ffffff', bold: kind !== 'heading', italic: false, align: 'center', stroke: kind === 'heading' ? '#000000' : null, shadow: true, bg: null });
+    const size = Math.round(Math.min(W, H * 1.4) * { heading: 0.08, sub: 0.05, body: 0.032 }[kind]);
+    const dark = blankBg !== null && blankBg !== 'transparent' && parseInt(blankBg.slice(1), 16) > 0x888888;
+    const t = fitText({ id: uid++, kind: 'text', x: 0, y: 0, w: 0, h: 0, rot: 0, opacity: 1, text: { heading: 'Add a heading', sub: 'Add a subheading', body: 'Add a little bit of body text' }[kind], font: kind === 'heading' ? 'Impact' : 'Arial', size, color: dark ? '#111111' : '#ffffff', bold: kind !== 'heading', italic: false, align: 'center', stroke: kind === 'heading' && !dark ? '#000000' : null, shadow: !dark, bg: null });
     add({ ...t, x: (W - t.w) / 2, y: (H - t.h) / 2 });
     setTimeout(() => textBox.current?.select(), 0);
   };
   const addShape = (shape: ShapeL['shape']) => {
-    const w = W * 0.3, h = shape === 'line' || shape === 'arrow' ? Math.max(20, W * 0.04) : W * 0.3;
-    add({ id: uid++, kind: 'shape', shape, x: (W - w) / 2, y: (H - h) / 2, w, h, rot: 0, opacity: 1, fill: shape === 'rect' || shape === 'ellipse' ? '#ffffff' : null, stroke: '#e5322d', strokeW: Math.max(2, Math.round(W * 0.006)), radius: 0 });
+    const s = Math.min(W, H);
+    const w = s * 0.3, h = shape === 'line' || shape === 'arrow' ? Math.max(20, s * 0.04) : s * 0.3;
+    add({ id: uid++, kind: 'shape', shape, x: (W - w) / 2, y: (H - h) / 2, w, h, rot: 0, opacity: 1, fill: shape === 'rect' || shape === 'ellipse' ? '#ffffff' : null, stroke: '#e5322d', strokeW: Math.max(2, Math.round(s * 0.006)), radius: 0 });
   };
   const addSticker = (s: string) => {
-    const t = fitText({ id: uid++, kind: 'text', x: 0, y: 0, w: 0, h: 0, rot: 0, opacity: 1, text: s, font: 'Segoe UI Emoji', size: Math.round(W * 0.12), color: '#000000', bold: false, italic: false, align: 'center', stroke: null, shadow: false, bg: null });
+    const t = fitText({ id: uid++, kind: 'text', x: 0, y: 0, w: 0, h: 0, rot: 0, opacity: 1, text: s, font: 'Segoe UI Emoji', size: Math.round(Math.min(W, H) * 0.12), color: '#000000', bold: false, italic: false, align: 'center', stroke: null, shadow: false, bg: null });
     add({ ...t, x: (W - t.w) / 2, y: (H - t.h) / 2 });
   };
-  const addImages = (files: FileList | null) => run(async () => {
-    let next = layers, last = 0;
-    for (const f of [...(files ?? [])]) {
-      const img = await loadImage(f);
-      const w = Math.min(W * 0.4, img.naturalWidth), h = (w * img.naturalHeight) / img.naturalWidth;
-      last = uid++;
-      next = [...next, { id: last, kind: 'image', img, x: (W - w) / 2, y: (H - h) / 2, w, h, rot: 0, opacity: 1, radius: 0 }];
-    }
-    if (last) { commit(next); setSelId(last); }
-  });
 
-  const pt = (e: React.PointerEvent): [number, number] => {
+  /** Saves files to Uploads; returns the new uploads so a drop can place the first one. */
+  const upload = async (files: File[]) => {
+    const added: (Upload & { url: string })[] = [];
+    for (const f of files) {
+      for (const part of await fileToImages(f)) {
+        const id = await saveUpload(part.name, part.blob);
+        added.push({ id, name: part.name, blob: part.blob, added: Date.now(), url: URL.createObjectURL(part.blob) });
+      }
+    }
+    setUps((u) => [...[...added].reverse(), ...u]);
+    return added;
+  };
+  const placeUpload = (u: Upload, cx?: number, cy?: number) => run(async () => add(newImageLayer(await loadImage(u.blob), W, H, cx, cy)));
+  const removeUpload = (u: Upload & { url: string }) => { deleteUpload(u.id); URL.revokeObjectURL(u.url); setUps((list) => list.filter((x) => x.id !== u.id)); };
+
+  const pt = (e: { clientX: number; clientY: number }): [number, number] => {
     const r = canvas.current!.getBoundingClientRect();
     return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
   };
@@ -234,23 +222,19 @@ export function ImageEditor() {
     canvas.current!.setPointerCapture(e.pointerId);
     if (drawing) {
       const l: DrawL = { id: uid++, kind: 'draw', x: 0, y: 0, w: W, h: H, ow: W, oh: H, rot: 0, opacity: 1, pts: [[px, py]], color: ink, width: inkW };
-      setPast((p) => [...p.slice(-49), layers]);
+      snapshot();
       setLayers([...layers, l]);
       drag.current = { kind: 'draw', start: l, px, py };
       return;
     }
     const tol = 8 / scale();
-    if (sel) {
+    if (sel && !sel.locked) {
       const [lx, ly] = toLocal(sel, px, py);
-      if (Math.abs(lx - sel.w) < 2 * tol && Math.abs(ly - sel.h) < 2 * tol) {
-        setPast((p) => [...p.slice(-49), layers]);
-        drag.current = { kind: 'resize', start: sel, px, py };
-        return;
-      }
+      if (Math.abs(lx - sel.w) < 2 * tol && Math.abs(ly - sel.h) < 2 * tol) { snapshot(); drag.current = { kind: 'resize', start: sel, px, py }; return; }
     }
     const hit = [...layers].reverse().find((l) => { const [lx, ly] = toLocal(l, px, py); return lx > -tol && ly > -tol && lx < l.w + tol && ly < l.h + tol; });
     setSelId(hit?.id ?? null);
-    if (hit) { setPast((p) => [...p.slice(-49), layers]); drag.current = { kind: 'move', start: hit, px, py }; }
+    if (hit && !hit.locked) { snapshot(); drag.current = { kind: 'move', start: hit, px, py }; }
   };
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -280,51 +264,65 @@ export function ImageEditor() {
       return { ...l, x, y, w, h, ow: w, oh: h, pts: l.pts.map(([a, b]) => [a - x, b - y] as [number, number]) };
     }));
   };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const [cx, cy] = pt(e);
+    const id = e.dataTransfer.getData('text/tj-upload');
+    if (id) { const u = ups.find((x) => String(x.id) === id); if (u) placeUpload(u, cx, cy); return; }
+    const files = [...e.dataTransfer.files];
+    if (files.length) run(async () => { const added = await upload(files); for (const u of added.slice(0, 5)) add(newImageLayer(await loadImage(u.blob), W, H, cx, cy)); });
+  };
 
   const exportCanvas = () => {
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     render(c.getContext('2d')!, base!, adj, layers, look, null, 1);
     if (fmt === 'image/png') return c;
-    const out = document.createElement('canvas'); // JPG/WEBP have no transparency: white under rounded corners
-    out.width = W; out.height = H;
-    const ctx = out.getContext('2d')!;
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); ctx.drawImage(c, 0, 0);
+    const out = solidCanvas(W, H, '#ffffff'); // JPG/WEBP have no transparency
+    out.getContext('2d')!.drawImage(c, 0, 0);
     return out;
   };
-  const save = () => run(async () => download(await canvasToBlob(exportCanvas(), fmt, 0.92), `${baseName(file!.name)}-edited.${EXT[fmt]}`));
-  // rotating the photo bakes everything (layers, filters, frame) into the new base image
+  const save = () => run(async () => download(await canvasToBlob(exportCanvas(), fmt, 0.92), `${name}-edited.${EXT[fmt]}`));
+  // rotating the whole design bakes everything (layers, filters, frame) into a new base
   const transform = (deg: number, h: boolean, v: boolean) => {
     const flat = exportCanvas();
-    setBase(rotateFlip(Object.assign(flat, { naturalWidth: flat.width, naturalHeight: flat.height }), deg, h, v));
-    setLayers([]); setPast([]); setSelId(null); setAdj(defaults()); setLook(LOOK0);
+    start(rotateFlip(Object.assign(flat, { naturalWidth: flat.width, naturalHeight: flat.height }), deg, h, v), blankBg, name);
   };
 
-  if (!base) return <><FileDrop accept="image/*" onFiles={(f) => setFile(f[0])} label="Select image" /><Status busy={busy} error={error} /></>;
+  if (!base) return <StartScreen onPhoto={openPhoto} onBlank={(w, h, bg) => start(solidCanvas(w, h, bg), bg, 'design')} busy={busy} error={error} />;
 
   const color = (label: string, value: string, on: (v: string) => void) => <Field label={label}><input type="color" value={value} onChange={(e) => on(e.target.value)} /></Field>;
   const range = (label: string, value: number, min: number, max: number, on: (v: number) => void, unit = '') => (
     <Field label={label} value={`${Math.round(value)}${unit}`}><input type="range" min={min} max={max} value={value} onChange={(e) => on(+e.target.value)} /></Field>
   );
+  const shown = fitW * zoom, s = shown / W;
+  const iconBtn = (label: string, icon: ReactNode, on: () => void, active = false) => (
+    <button className={`fbtn ${active ? 'on' : ''}`} title={label} aria-label={label} onPointerDown={(e) => e.stopPropagation()} onClick={on}>{icon}</button>
+  );
 
   return (
     <div className="editor-wrap">
+      <input ref={uploadInput} type="file" accept="image/*,.pdf,application/pdf" multiple hidden onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; run(async () => { await upload(f); }); }} />
+      <input ref={replaceInput} type="file" accept="image/*,.pdf,application/pdf" hidden onChange={(e) => {
+        const f = e.target.files?.[0]; e.target.value = '';
+        if (f && sel?.kind === 'image') run(async () => { const [u] = await upload([f]); const img = await loadImage(u.blob); patch({ img, crop: NO_CROP, h: imageHeight({ img, crop: NO_CROP }, sel.w) }); });
+      }} />
       <div className="toolbar">
-        <Segmented label="Tools" value={tab} onChange={(t) => { setTab(t); setDrawing(t === 'draw'); }}
-          options={[['adjust', 'Adjust'], ['text', 'Text'], ['elements', 'Add'], ['draw', 'Draw'], ['frame', 'Frame']]} />
+        <Segmented label="Tools" value={tab} onChange={setTab}
+          options={[['uploads', 'Uploads'], ['text', 'Text'], ['elements', 'Elements'], ['draw', 'Draw'], ['adjust', 'Adjust'], ['frame', 'Page']]} />
 
-        {tab === 'adjust' && <>
-          <b>Filters</b>
-          <div className="chip-grid">{Object.entries(PRESETS).map(([n, p]) => <button key={n} className="btn sm ghost" onClick={() => setAdj({ ...defaults(), ...p })}>{n}</button>)}</div>
-          {(Object.keys(ADJ) as AdjKey[]).map((k) => range(ADJ[k].label, adj[k], ADJ[k].min, ADJ[k].max, (v) => setAdj({ ...adj, [k]: v }), ADJ[k].unit === 'deg' ? '°' : ADJ[k].unit))}
-          <b>Rotate & flip photo</b>
-          <div className="chip-grid">
-            <button className="btn sm ghost" onClick={() => transform(270, false, false)}>⟲ 90°</button>
-            <button className="btn sm ghost" onClick={() => transform(90, false, false)}>⟳ 90°</button>
-            <button className="btn sm ghost" onClick={() => transform(0, true, false)}>⇋ Flip</button>
-            <button className="btn sm ghost" onClick={() => transform(0, false, true)}>⇵ Flip</button>
+        {tab === 'uploads' && <>
+          <button className="btn" onClick={() => uploadInput.current?.click()}>⬆ Upload files</button>
+          <span className="muted">Images, SVG and PDFs (each page becomes an image). Saved in this browser only. Click or drag onto the design.</span>
+          <div className="upload-grid">
+            {ups.map((u) => (
+              <div key={u.id} className="upload-item" draggable onDragStart={(e) => e.dataTransfer.setData('text/tj-upload', String(u.id))}>
+                <button className="upload-thumb" onClick={() => placeUpload(u)} title={`Add ${u.name}`}><img src={u.url} alt={u.name} loading="lazy" /></button>
+                <button className="upload-del" onClick={() => removeUpload(u)} aria-label={`Remove ${u.name} from uploads`}>✕</button>
+              </div>
+            ))}
           </div>
-          <span className="muted">Rotating merges text and elements into the photo.</span>
+          {!ups.length && <span className="muted">No uploads yet.</span>}
         </>}
 
         {tab === 'text' && <>
@@ -334,8 +332,6 @@ export function ImageEditor() {
         </>}
 
         {tab === 'elements' && <>
-          <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { addImages(e.target.files); e.target.value = ''; }} />
-          <button className="btn sm" onClick={() => imgInput.current?.click()}>🖼 Add image(s)</button>
           <b>Shapes</b>
           <div className="chip-grid">
             <button className="btn sm ghost" onClick={() => addShape('rect')}>▭ Box</button>
@@ -344,28 +340,46 @@ export function ImageEditor() {
             <button className="btn sm ghost" onClick={() => addShape('arrow')}>→ Arrow</button>
           </div>
           <b>Stickers</b>
-          <div className="sticker-grid">{STICKERS.map((s) => <button key={s} onClick={() => addSticker(s)} aria-label={`Add ${s}`}>{s}</button>)}</div>
+          <div className="sticker-grid">{STICKERS.map((x) => <button key={x} onClick={() => addSticker(x)} aria-label={`Add ${x}`}>{x}</button>)}</div>
         </>}
 
         {tab === 'draw' && <>
-          <span className="muted">Draw on the photo. Each stroke becomes a layer you can move.</span>
+          <span className="muted">Draw on the design. Each stroke becomes a layer you can move.</span>
           {color('Brush color', ink, setInk)}
           {range('Brush size', inkW, 1, Math.max(40, Math.round(W / 30)), setInkW)}
         </>}
 
+        {tab === 'adjust' && <>
+          <b>Filters (whole design)</b>
+          <div className="chip-grid">{Object.entries(PRESETS).map(([n, p]) => <button key={n} className="btn sm ghost" onClick={() => setAdj({ ...defaultAdj(), ...p })}>{n}</button>)}</div>
+          {(Object.keys(ADJ) as AdjKey[]).map((k) => range(ADJ[k].label, adj[k], ADJ[k].min, ADJ[k].max, (v) => setAdj({ ...adj, [k]: v }), ADJ[k].unit === 'deg' ? '°' : ADJ[k].unit))}
+        </>}
+
         {tab === 'frame' && <>
+          {blankBg !== null && <>
+            <Field label="Background color"><input type="color" value={blankBg === 'transparent' ? '#ffffff' : blankBg} onChange={(e) => { setBlankBg(e.target.value); setBase(solidCanvas(W, H, e.target.value)); }} /></Field>
+            <Toggle label="Transparent background" checked={blankBg === 'transparent'} onChange={(v) => { const c = v ? 'transparent' : '#ffffff'; setBlankBg(c); setBase(solidCanvas(W, H, c)); }} />
+          </>}
           {range('Vignette', look.vignette, 0, 90, (v) => setLook({ ...look, vignette: v }), '%')}
           {range('Rounded corners', look.radius, 0, 100, (v) => setLook({ ...look, radius: v }), '%')}
           {range('Border', look.border, 0, 100, (v) => setLook({ ...look, border: v }), '%')}
           {look.border > 0 && color('Border color', look.borderColor, (v) => setLook({ ...look, borderColor: v }))}
+          <b>Rotate & flip page</b>
+          <div className="chip-grid">
+            <button className="btn sm ghost" onClick={() => transform(270, false, false)}>⟲ 90°</button>
+            <button className="btn sm ghost" onClick={() => transform(90, false, false)}>⟳ 90°</button>
+            <button className="btn sm ghost" onClick={() => transform(0, true, false)}>⇋ Flip</button>
+            <button className="btn sm ghost" onClick={() => transform(0, false, true)}>⇵ Flip</button>
+          </div>
+          <span className="muted">Rotating the page merges all layers into it.</span>
         </>}
 
         {sel && <div className="layer-panel">
-          <b>Selected {sel.kind === 'text' ? 'text' : sel.kind}</b>
+          <b>Selected {sel.kind === 'draw' ? 'drawing' : sel.kind}{sel.locked ? ' (locked)' : ''}</b>
           {sel.kind === 'text' && <>
             <textarea ref={textBox} style={{ minHeight: 70 }} value={sel.text} onChange={(e) => patch({ text: e.target.value })} />
             <Field label="Font"><select value={sel.font} onChange={(e) => patch({ font: e.target.value })}>{[...new Set([sel.font, ...FONTS])].map((f) => <option key={f} style={{ fontFamily: f }}>{f}</option>)}</select></Field>
-            {range('Size', sel.size, 6, Math.round(W / 3), (v) => patch({ size: v }))}
+            {range('Size', sel.size, 6, Math.round(Math.max(W, H) / 3), (v) => patch({ size: v }))}
             {color('Color', sel.color, (v) => patch({ color: v }))}
             <div className="chip-grid">
               <button className={`btn sm ghost ${sel.bold ? 'on' : ''}`} onClick={() => patch({ bold: !sel.bold })}><b>B</b></button>
@@ -378,6 +392,7 @@ export function ImageEditor() {
             <Toggle label="Background" checked={!!sel.bg} onChange={(v) => patch({ bg: v ? '#000000' : null })} />
             {sel.bg && color('Background color', sel.bg, (v) => patch({ bg: v }))}
           </>}
+          {sel.kind === 'image' && <ImageControls sel={sel} patch={patch} range={range} color={color} tol={tol} setTol={setTol} onReplace={() => replaceInput.current?.click()} onFill={fillPage} />}
           {sel.kind === 'shape' && <>
             {(sel.shape === 'rect' || sel.shape === 'ellipse') && <Toggle label="Fill" checked={!!sel.fill} onChange={(v) => patch({ fill: v ? '#ffffff' : null })} />}
             {sel.fill && color('Fill color', sel.fill, (v) => patch({ fill: v }))}
@@ -385,39 +400,106 @@ export function ImageEditor() {
             {range('Line width', sel.strokeW, 0, Math.max(20, Math.round(W / 40)), (v) => patch({ strokeW: v }))}
             {sel.shape === 'rect' && range('Corner radius', sel.radius, 0, 100, (v) => patch({ radius: v }), '%')}
           </>}
-          {sel.kind === 'image' && range('Corner radius', sel.radius, 0, 100, (v) => patch({ radius: v }), '%')}
           {sel.kind === 'draw' && color('Color', sel.color, (v) => patch({ color: v }))}
-          {range('Opacity', sel.opacity * 100, 5, 100, (v) => patch({ opacity: v / 100 }), '%')}
+          {range('Transparency', (1 - sel.opacity) * 100, 0, 95, (v) => patch({ opacity: 1 - v / 100 }), '%')}
           {range('Rotation', sel.rot, -180, 180, (v) => patch({ rot: v }), '°')}
+          <b>Position</b>
           <div className="chip-grid">
-            <button className="btn sm ghost" onClick={() => reorder(1)} title="Bring forward">⬆ Forward</button>
-            <button className="btn sm ghost" onClick={() => reorder(-1)} title="Send backward">⬇ Back</button>
-            <button className="btn sm ghost" onClick={duplicate} title="Ctrl+D">⧉ Copy</button>
-            <button className="btn sm ghost" onClick={remove} title="Delete">🗑 Delete</button>
+            {(['left', 'center', 'right', 'top', 'middle', 'bottom'] as const).map((a) => <button key={a} className="btn sm ghost" onClick={() => align(a)}>{a[0].toUpperCase() + a.slice(1)}</button>)}
+          </div>
+          <div className="chip-grid">
+            <button className="btn sm ghost" onClick={() => reorder('top')}>⤒ To front</button>
+            <button className="btn sm ghost" onClick={() => reorder(1)}>⬆ Forward</button>
+            <button className="btn sm ghost" onClick={() => reorder(-1)}>⬇ Back</button>
+            <button className="btn sm ghost" onClick={() => reorder('bottom')}>⤓ To back</button>
           </div>
         </div>}
-
-        <div className="chip-grid">
-          <button className="btn sm ghost" disabled={!past.length} onClick={undo} title="Ctrl+Z">↶ Undo</button>
-          <button className="btn sm ghost" onClick={() => { commit([]); setSelId(null); setAdj(defaults()); setLook(LOOK0); }}>Reset all</button>
-        </div>
-        <Segmented label="Save as" value={fmt} onChange={setFmt} options={[['image/png', 'PNG'], ['image/jpeg', 'JPG'], ['image/webp', 'WEBP']]} />
-        <button className="btn" onClick={save}>Download</button>
-        <button className="btn sm ghost" onClick={() => { setBase(null); setFile(null); }}>Open another image</button>
         <Status busy={busy} error={error} />
       </div>
-      <div className="stage">
-        <canvas
-          ref={canvas}
-          className="photo-canvas"
-          style={{ cursor: drawing ? 'crosshair' : 'default' }}
-          onPointerDown={onDown}
-          onPointerMove={onMove}
-          onPointerUp={onUp}
-          onDoubleClick={() => sel?.kind === 'text' && textBox.current?.select()}
-        />
-        <p className="muted" style={{ textAlign: 'center', margin: '10px 0 0' }}>Click a layer to select it, drag to move, drag the corner square to resize. Del deletes, Ctrl+Z undoes, Ctrl+D duplicates.</p>
+
+      <div className="stage" ref={stage}>
+        <div className="photo-topbar">
+          <button className="btn sm ghost" disabled={!past.length} onClick={undo} title="Undo (Ctrl+Z)">↶</button>
+          <button className="btn sm ghost" disabled={!future.length} onClick={redo} title="Redo (Ctrl+Y)">↷</button>
+          <span className="muted">{W} × {H}px</span>
+          <span style={{ flex: 1 }} />
+          <button className="btn sm ghost" onClick={() => setZoom((z) => Math.max(0.2, z / 1.2))} aria-label="Zoom out">−</button>
+          <input type="range" min={20} max={400} value={Math.round(zoom * 100)} onChange={(e) => setZoom(+e.target.value / 100)} aria-label="Zoom" style={{ width: 110, height: 32 }} />
+          <button className="btn sm ghost" onClick={() => setZoom((z) => Math.min(4, z * 1.2))} aria-label="Zoom in">+</button>
+          <button className="btn sm ghost" onClick={() => setZoom(1)} title="Fit to screen">{Math.round(zoom * 100)}%</button>
+          <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="File type" style={{ height: 32 }}>
+            <option value="image/png">PNG</option><option value="image/jpeg">JPG</option><option value="image/webp">WEBP</option>
+          </select>
+          <button className="btn sm" onClick={save}>⬇ Download</button>
+          <button className="btn sm ghost" onClick={() => setBase(null)} title="Start over">New</button>
+        </div>
+        <div className="canvas-wrap" style={{ width: shown }} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+          <canvas
+            ref={canvas}
+            className="photo-canvas"
+            style={{ width: shown, cursor: drawing ? 'crosshair' : 'default' }}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onDoubleClick={() => sel?.kind === 'text' && textBox.current?.select()}
+          />
+          {sel && !drawing && (
+            <div className="float-bar" style={{ left: (sel.x + sel.w / 2) * s, top: Math.max(0, sel.y * s - 46) }}>
+              {iconBtn('Rotate 90°', '⟳', () => patch({ rot: ((sel.rot + 90 + 180) % 360) - 180 }))}
+              {iconBtn('Flip horizontally', '⇋', () => patch({ flipX: !sel.flipX }), !!sel.flipX)}
+              {iconBtn('Flip vertically', '⇵', () => patch({ flipY: !sel.flipY }), !!sel.flipY)}
+              {iconBtn(sel.locked ? 'Unlock' : 'Lock', sel.locked ? '🔒' : '🔓', () => patch({ locked: !sel.locked }), !!sel.locked)}
+              {iconBtn('Duplicate (Ctrl+D)', '⧉', duplicate)}
+              {iconBtn('Delete (Del)', '🗑', remove)}
+            </div>
+          )}
+        </div>
+        <p className="muted" style={{ textAlign: 'center', margin: '10px 0 0' }}>
+          Drop images or PDFs on the design. Click to select, drag to move, corner square resizes, arrows nudge. Ctrl+scroll zooms.
+        </p>
+        {error && <button className="btn sm ghost" onClick={() => setError('')}>Dismiss error</button>}
       </div>
     </div>
   );
+}
+
+function ImageControls({ sel, patch, range, color, tol, setTol, onReplace, onFill }: {
+  sel: ImageL;
+  patch: (p: Partial<Layer>) => void;
+  range: (label: string, value: number, min: number, max: number, on: (v: number) => void, unit?: string) => ReactNode;
+  color: (label: string, value: string, on: (v: string) => void) => ReactNode;
+  tol: number; setTol: (n: number) => void;
+  onReplace: () => void; onFill: () => void;
+}) {
+  const [open, setOpen] = useState<'crop' | 'fx' | 'border' | 'bg' | null>(null);
+  const cropSide = (side: 'l' | 't' | 'r' | 'b', label: string) => range(label, sel.crop[side] * 100, 0, 45, (v) => {
+    const crop = { ...sel.crop, [side]: v / 100 };
+    patch({ crop, h: imageHeight({ img: sel.img, crop }, sel.w) });
+  }, '%');
+  const fx = (k: AdjKey) => range(ADJ[k].label, sel.fx[k] ?? ADJ[k].def, ADJ[k].min, ADJ[k].max, (v) => patch({ fx: { ...sel.fx, [k]: v } as Partial<Adj> }), ADJ[k].unit === 'deg' ? '°' : ADJ[k].unit);
+  const section = (id: NonNullable<typeof open>, label: string) => (
+    <button className={`btn sm ghost ${open === id ? 'on' : ''}`} onClick={() => setOpen(open === id ? null : id)}>{label}</button>
+  );
+  return <>
+    <div className="chip-grid">
+      <button className="btn sm ghost" onClick={onReplace}>⇄ Replace</button>
+      <button className="btn sm ghost" onClick={onFill}>⛶ Fill page</button>
+      {section('crop', '⌗ Crop')}
+      {section('fx', '✦ Edit')}
+      {section('border', '▢ Border')}
+      {section('bg', '◌ BG remove')}
+    </div>
+    {open === 'crop' && <>{cropSide('l', 'Crop left')}{cropSide('r', 'Crop right')}{cropSide('t', 'Crop top')}{cropSide('b', 'Crop bottom')}</>}
+    {open === 'fx' && <>{IMAGE_FX.map((k) => <div key={k}>{fx(k)}</div>)}<button className="btn sm ghost" onClick={() => patch({ fx: {} })}>Reset image edits</button></>}
+    {open === 'border' && <>
+      {range('Border width', sel.border, 0, Math.max(30, Math.round(sel.w / 10)), (v) => patch({ border: v }))}
+      {color('Border color', sel.borderColor, (v) => patch({ borderColor: v }))}
+      {range('Corner radius', sel.radius, 0, 100, (v) => patch({ radius: v }), '%')}
+    </>}
+    {open === 'bg' && <>
+      <span className="muted">Removes a plain background (white paper, solid colour) around logos, seals and signatures.</span>
+      {range('Tolerance', tol, 2, 60, setTol)}
+      <button className="btn sm" onClick={() => patch({ img: removePlainBackground(sel.img, tol) })}>Remove background</button>
+    </>}
+  </>;
 }
