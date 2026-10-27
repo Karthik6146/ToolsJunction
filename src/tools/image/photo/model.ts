@@ -25,10 +25,32 @@ export const filterOf = (a: Partial<Adj>) =>
 type Common = { id: number; x: number; y: number; w: number; h: number; rot: number; opacity: number; flipX?: boolean; flipY?: boolean; locked?: boolean };
 export type TextL = Common & { kind: 'text'; text: string; font: string; size: number; color: string; bold: boolean; italic: boolean; align: 'left' | 'center' | 'right'; stroke: string | null; shadow: boolean; bg: string | null };
 export type Crop = { l: number; t: number; r: number; b: number }; // fractions trimmed from each side
-export type ImageL = Common & { kind: 'image'; img: HTMLImageElement | HTMLCanvasElement; radius: number; crop: Crop; border: number; borderColor: string; fx: Partial<Adj> };
+export type Mask = 'rect' | 'circle' | 'arch';
+export type ImageL = Common & { kind: 'image'; img: HTMLImageElement | HTMLCanvasElement; radius: number; mask?: Mask; crop: Crop; border: number; borderColor: string; fx: Partial<Adj> };
+/** Empty Canva-style frame: drop an image on it to fill the shape. */
+export type FrameL = Common & { kind: 'frame'; mask: Mask; radius: number };
 export type ShapeL = Common & { kind: 'shape'; shape: 'rect' | 'ellipse' | 'line' | 'arrow'; fill: string | null; stroke: string; strokeW: number; radius: number };
 export type DrawL = Common & { kind: 'draw'; pts: [number, number][]; color: string; width: number; ow: number; oh: number };
-export type Layer = TextL | ImageL | ShapeL | DrawL;
+export type Layer = TextL | ImageL | ShapeL | DrawL | FrameL;
+
+/** Clip/outline path for an image or frame box. radius: % of the shorter side (rect only). */
+export function maskPath(ctx: CanvasRenderingContext2D, mask: Mask | undefined, w: number, h: number, radius: number) {
+  ctx.beginPath();
+  if (mask === 'circle') ctx.ellipse(w / 2, h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  else if (mask === 'arch') { ctx.moveTo(0, h); ctx.lineTo(0, w / 2); ctx.arc(w / 2, Math.min(w / 2, h), w / 2, Math.PI, 0); ctx.lineTo(w, h); ctx.closePath(); }
+  else ctx.roundRect(0, 0, w, h, (radius / 100) * Math.min(w, h) / 2);
+}
+
+/** Image cropped to cover the box (like Canva dropping a photo into a frame), centred. */
+export function fitIntoBox(img: ImageL['img'], box: { x: number; y: number; w: number; h: number }, mask: Mask, base: Partial<ImageL> = {}): ImageL {
+  const [nw, nh] = srcSize(img);
+  const a = nw / nh, b = box.w / box.h;
+  const crop: Crop = a > b ? { l: (1 - b / a) / 2, r: (1 - b / a) / 2, t: 0, b: 0 } : { l: 0, r: 0, t: (1 - a / b) / 2, b: (1 - a / b) / 2 };
+  return {
+    id: 0, rot: 0, opacity: 1, radius: 0, border: 0, borderColor: '#ffffff', fx: {}, ...base,
+    kind: 'image', img, mask, crop, x: box.x, y: box.y, w: box.w, h: box.h,
+  };
+}
 export type Look = { vignette: number; radius: number; border: number; borderColor: string };
 export const LOOK0: Look = { vignette: 0, radius: 0, border: 0, borderColor: '#ffffff' };
 export const NO_CROP: Crop = { l: 0, t: 0, r: 0, b: 0 };
@@ -68,12 +90,20 @@ function drawLayer(ctx: CanvasRenderingContext2D, l: Layer) {
     });
   } else if (l.kind === 'image') {
     const [nw, nh] = srcSize(l.img);
-    const r = (l.radius / 100) * Math.min(l.w, l.h) / 2;
-    ctx.beginPath(); ctx.roundRect(0, 0, l.w, l.h, r); ctx.clip();
+    maskPath(ctx, l.mask, l.w, l.h, l.radius);
+    ctx.save();
+    ctx.clip();
     ctx.filter = filterOf(l.fx);
     ctx.drawImage(l.img, l.crop.l * nw, l.crop.t * nh, nw * (1 - l.crop.l - l.crop.r), nh * (1 - l.crop.t - l.crop.b), 0, 0, l.w, l.h);
     ctx.filter = 'none';
-    if (l.border) { ctx.lineWidth = l.border * 2; ctx.strokeStyle = l.borderColor; ctx.beginPath(); ctx.roundRect(0, 0, l.w, l.h, r); ctx.stroke(); }
+    if (l.border) { ctx.lineWidth = l.border * 2; ctx.strokeStyle = l.borderColor; ctx.stroke(); }
+    ctx.restore();
+  } else if (l.kind === 'frame') {
+    maskPath(ctx, l.mask, l.w, l.h, l.radius);
+    ctx.fillStyle = '#d4d8e0'; ctx.fill();
+    ctx.fillStyle = '#7b8494'; ctx.font = `${Math.max(10, Math.min(l.w, l.h) * 0.09)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Drop image here', l.w / 2, l.h / 2);
   } else if (l.kind === 'shape') {
     const s = l.strokeW;
     ctx.lineWidth = s; ctx.strokeStyle = l.stroke; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
