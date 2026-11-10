@@ -21,7 +21,7 @@ Your files never leave your device.
 
 <img src="https://img.shields.io/github/v/release/Karthik6146/ToolsJunction?color=e5322d&label=release" alt="Latest release">
 <img src="https://img.shields.io/github/actions/workflow/status/Karthik6146/ToolsJunction/pages.yml?branch=main&label=deploy" alt="Deploy status">
-<img src="https://img.shields.io/badge/first%20load-28%20KB-22c55e" alt="First load 28 KB">
+<img src="https://img.shields.io/badge/first%20load-29%20KB-22c55e" alt="First load 29 KB">
 <img src="https://img.shields.io/badge/works-offline-0ea5e9" alt="Works offline">
 <img src="https://img.shields.io/github/license/Karthik6146/ToolsJunction?color=64748b" alt="License">
 
@@ -30,7 +30,7 @@ Your files never leave your device.
 <br>
 
 <p align="center">
-  <img src=".github/assets/screenshot-home.png" alt="ToolsJunction home page with searchable tool grid" width="880">
+  <img src=".github/assets/screenshot-home.png" alt="ToolsJunction home page: search and tools grouped by category" width="880">
 </p>
 
 ## ✨ Why ToolsJunction
@@ -38,7 +38,7 @@ Your files never leave your device.
 |  |  |
 |---|---|
 | 🔒 **Private by design** | Every tool runs inside your browser. Nothing is uploaded, ever. |
-| ⚡ **Fast on slow internet** | The home page is ~28 KB. Each tool loads only what it needs, then it's cached. |
+| ⚡ **Fast on slow internet** | The home page is ~29 KB. Each tool loads only what it needs, then it's cached. |
 | 📴 **Works offline** | After your first visit, the app opens and works without a connection. |
 | 🖥️ **Install it anywhere** | Use it on the web, install it from Chrome/Edge, or get the Windows app. |
 | 💸 **Free, no limits** | No sign-up, no watermarks, no file-size caps beyond your device's memory. |

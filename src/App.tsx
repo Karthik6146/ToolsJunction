@@ -1,6 +1,21 @@
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CATEGORIES, catOf, toolById, tools, type Category } from './tools/registry';
+
+const tint = (color: string, more?: CSSProperties) => ({ '--c': color, ...more }) as CSSProperties;
+
+// the hover highlight on a tool card follows the cursor
+function spot(e: MouseEvent<HTMLElement>) {
+  const card = (e.target as HTMLElement).closest<HTMLElement>('.card');
+  if (!card) return;
+  const r = card.getBoundingClientRect();
+  card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+  card.style.setProperty('--my', `${e.clientY - r.top}px`);
+}
+
+const ToolIcon = ({ d }: { d: string }) => (
+  <svg className="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+);
 
 function Header() {
   const location = useLocation();
@@ -17,7 +32,7 @@ function Header() {
         )}
         <Link to="/" className="brand"><span className="logo">TJ</span><span>Tools<b>Junction</b></span></Link>
       </div>
-      <span className="tag">Free · Private · Runs on your device</span>
+      <span className="tag">Free · No sign-up · Works offline</span>
     </header>
   );
 }
@@ -26,16 +41,20 @@ function Home() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<Category | 'all'>('all');
   useEffect(() => { document.title = 'ToolsJunction – Free Image & PDF Tools'; }, []);
-  const list = useMemo(() => {
+  const groups = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return tools.filter((t) => (cat === 'all' || t.category === cat) && (!s || `${t.name} ${t.description}`.toLowerCase().includes(s)));
+    return CATEGORIES.filter((c) => cat === 'all' || c.id === cat)
+      .map((c) => ({ ...c, items: tools.filter((t) => t.category === c.id && (!s || `${t.name} ${t.description}`.toLowerCase().includes(s))) }))
+      .filter((g) => g.items.length);
   }, [q, cat]);
   return (
-    <main className="wrap">
+    <main className="wrap" onMouseMove={spot}>
       <section className="hero">
-        <h1>Every image & PDF tool you need, in one place</h1>
-        <p>Resize, edit, convert, merge, sign and protect. Your files never leave your device.</p>
-        <input className="search" type="search" placeholder={`Search ${tools.length} tools…`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search tools" />
+        <div>
+          <h1>{tools.length} image and PDF tools that run on your device</h1>
+          <p>Resize, convert, merge, sign and protect without uploading a file</p>
+        </div>
+        <input className="search" type="search" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search tools" />
       </section>
       <nav className="chips" aria-label="Categories">
         <button className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>All</button>
@@ -43,16 +62,26 @@ function Home() {
           <button key={c.id} className={cat === c.id ? 'on' : ''} onClick={() => setCat(c.id)}>{c.name}</button>
         ))}
       </nav>
-      <div className="grid">
-        {list.map((t) => (
-          <Link key={t.id} to={`/tool/${t.id}`} className="card">
-            <span className="ico" style={{ background: catOf(t.category).color }}>{t.icon}</span>
-            <h3>{t.name}</h3>
-            <p>{t.description}</p>
-          </Link>
-        ))}
-        {!list.length && <p className="muted">No tools match "{q}".</p>}
-      </div>
+      {groups.map((g, i) => (
+        <section key={g.id} className="group" style={tint(g.color, { animationDelay: `${Math.min(i, 5) * 50}ms` })} aria-labelledby={`group-${g.id}`}>
+          <header className="group-head">
+            <h2 id={`group-${g.id}`}>{g.name}</h2>
+            <span className="count">{g.items.length}</span>
+          </header>
+          <div className="grid">
+            {g.items.map((t) => (
+              <Link key={t.id} to={`/tool/${t.id}`} className="card">
+                <ToolIcon d={t.icon} />
+                <div>
+                  <h3>{t.name}</h3>
+                  <p>{t.description}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
+      {!groups.length && <p className="muted">No tools match "{q}"</p>}
     </main>
   );
 }
@@ -66,8 +95,8 @@ function ToolPage() {
   return (
     <main className="wrap tool">
       <Link to="/" className="back">← All tools</Link>
-      <div className="tool-head">
-        <span className="ico" style={{ background: catOf(tool.category).color }}>{tool.icon}</span>
+      <div className="tool-head" style={tint(catOf(tool.category).color)}>
+        <ToolIcon d={tool.icon} />
         <div>
           <h1>{tool.name}</h1>
           <p className="muted">{tool.description}</p>
@@ -89,7 +118,7 @@ export default function App() {
         <Route path="/tool/:id" element={<ToolPage />} />
       </Routes>
       <footer className="foot">
-        ToolsJunction · All processing happens locally in your browser · <a href="https://github.com/Karthik6146/ToolsJunction" target="_blank" rel="noreferrer">GitHub</a>
+        ToolsJunction · Files are processed on this device · <a href="https://github.com/Karthik6146/ToolsJunction" target="_blank" rel="noreferrer">GitHub</a>
       </footer>
     </>
   );
