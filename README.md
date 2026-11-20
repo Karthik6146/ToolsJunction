@@ -72,7 +72,7 @@ Your files never leave your device.
 <td valign="top" width="50%">
 
 **📥 Convert to PDF**
-- Images, with a live page preview: drag to reorder, rotate, Fit or Fill, margins. Phone photos come out the right way up.
+- Images, with a live page preview: drag to reorder, rotate, Fit or Fill, optional white border. Phone photos come out the right way up.
 - Word (.docx) · Excel (.xlsx/.csv) · HTML · Text
 
 **📤 Convert from PDF**

@@ -7,6 +7,8 @@ export default defineConfig({
   base: './',
   plugins: [preact()],
   build: { target: 'es2022', chunkSizeWarningLimit: 2000 },
+  // the Windows build in release/ holds locked DLLs; watching them crashes the dev server (EBUSY)
+  server: { watch: { ignored: ['**/release/**'] } },
   // only the app's own tests: agent skill folders (.agents/, .claude/) ship *.test.cjs files that are not vitest suites
   test: { environment: 'node', globals: true, include: ['src/**/*.test.ts'] },
 });

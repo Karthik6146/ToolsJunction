@@ -78,7 +78,7 @@ const GRIP = 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01';
 
 export function ImagesToPdf() {
   const [items, setItems] = useState<Item[]>([]);
-  const [o, setO] = useState<PageOpts>({ pageSize: 'a4', orientation: 'auto', margin: 20, fill: false });
+  const [o, setO] = useState<PageOpts>({ pageSize: 'a4', orientation: 'auto', margin: 0, fill: false });
   const [drag, setDrag] = useState<number | null>(null);
   const nextId = useRef(1);
   const r = useRunner();
@@ -173,8 +173,8 @@ export function ImagesToPdf() {
           <Segmented label="Image" value={o.fill ? 'fill' : 'fit'} onChange={(v) => set({ fill: v === 'fill' })} options={[['fit', 'Fit whole image'], ['fill', 'Fill page']]} />
         </>}
         <label className="field">
-          <span className="field-label">Margin<b className="field-value">{mm ? `${mm} mm` : 'None'}</b></span>
-          <input type="range" min={0} max={72} step={4} value={o.margin} onChange={(e) => set({ margin: +e.target.value })} />
+          <span className="field-label">White border<b className="field-value">{mm ? `${mm} mm` : 'None'}</b></span>
+          <input type="range" min={0} max={72} step={4} value={o.margin} aria-label="White border around each image" onChange={(e) => set({ margin: +e.target.value })} />
         </label>
       </aside>
 
