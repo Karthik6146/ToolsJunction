@@ -1,51 +1,8 @@
 import { useState } from 'react';
-import { FileDrop, FileList, Field, Panel, Status, useFiles, useRunner } from '../../components/ui';
+import { FileDrop, Field, Panel, Status, useRunner } from '../../components/ui';
 import { PDF_TYPE, baseName, download, readBytes } from '../../lib/files';
-import { imagesToPdf, textToPdf, type PageSize } from '../../lib/pdf';
-import { canvasToBlob, drawToCanvas, loadImage } from '../../lib/image';
+import { textToPdf } from '../../lib/pdf';
 import { docxToHtml, esc, htmlToPdf, sheetToHtml } from '../../lib/convert';
-
-export function ImagesToPdf() {
-  const { files, add, remove, move } = useFiles();
-  const { busy, error, run } = useRunner();
-  const [pageSize, setPS] = useState<PageSize>('a4');
-  const [margin, setMargin] = useState(20);
-  const [orient, setOrient] = useState<'auto' | 'portrait' | 'landscape'>('auto');
-  const go = () => run(async () => {
-    const imgs = await Promise.all(files.map(async (f) => {
-      if (f.type === 'image/jpeg') return { bytes: await readBytes(f), type: 'jpg' as const };
-      if (f.type === 'image/png') return { bytes: await readBytes(f), type: 'png' as const };
-      // other formats (webp, gif, bmp…) are re-encoded as JPEG
-      const img = await loadImage(f);
-      return { bytes: await readBytes(await canvasToBlob(drawToCanvas(img, img.naturalWidth, img.naturalHeight, '#fff'), 'image/jpeg', 0.92)), type: 'jpg' as const };
-    }));
-    const landscape = orient === 'auto' ? undefined : orient === 'landscape';
-    download(await imagesToPdf(imgs, { pageSize, margin, landscape }), files.length === 1 ? `${baseName(files[0].name)}.pdf` : 'images.pdf', PDF_TYPE);
-  });
-  return (
-    <>
-      <FileDrop accept="image/*" multiple onFiles={add} label="Select images" />
-      {files.length > 0 && <>
-        <FileList files={files} onRemove={remove} onMove={move} />
-        <Panel>
-          <Field label="Page size">
-            <select value={pageSize} onChange={(e) => setPS(e.target.value as PageSize)}>
-              <option value="a4">A4</option><option value="letter">US Letter</option><option value="fit">Same as image</option>
-            </select>
-          </Field>
-          {pageSize !== 'fit' && <Field label="Orientation">
-            <select value={orient} onChange={(e) => setOrient(e.target.value as typeof orient)}>
-              <option value="auto">Auto</option><option value="portrait">Portrait</option><option value="landscape">Landscape</option>
-            </select>
-          </Field>}
-          <Field label="Margin (pt)"><input type="number" min={0} max={100} value={margin} onChange={(e) => setMargin(+e.target.value)} /></Field>
-          <button className="btn" disabled={busy} onClick={go}>Convert to PDF</button>
-        </Panel>
-      </>}
-      <Status busy={busy} error={error} />
-    </>
-  );
-}
 
 /** One input file -> HTML -> PDF. */
 function HtmlBased({ accept, label, toHtml }: { accept: string; label: string; toHtml: (f: File) => Promise<string> }) {

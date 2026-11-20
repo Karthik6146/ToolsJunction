@@ -75,3 +75,29 @@ export async function fitToSize(c: HTMLCanvasElement, type: string, targetBytes:
 }
 
 export const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
+/**
+ * Clockwise turn stored in a JPEG's EXIF Orientation tag (phone cameras save sideways pixels plus
+ * this tag). Browsers apply it when showing the photo; PDF writers do not, so it must be added.
+ * shortcut: mirrored orientations (2, 4, 5, 7) are treated as upright; they are rare from cameras.
+ */
+export function jpegRotation(b: Uint8Array): 0 | 90 | 180 | 270 {
+  if (b[0] !== 0xff || b[1] !== 0xd8) return 0;
+  for (let i = 2; i + 10 < b.length && b[i] === 0xff;) {
+    const marker = b[i + 1];
+    if (marker === 0xda) break; // image data starts: no EXIF before it
+    if (marker === 0xe1 && String.fromCharCode(b[i + 4], b[i + 5], b[i + 6], b[i + 7]) === 'Exif') {
+      const t = i + 10; // TIFF header
+      const le = b[t] === 0x49;
+      const u16 = (o: number) => (le ? b[o] | (b[o + 1] << 8) : (b[o] << 8) | b[o + 1]);
+      const ifd = t + (le ? u16(t + 4) | (u16(t + 6) << 16) : (u16(t + 4) << 16) | u16(t + 6));
+      for (let k = 0, n = u16(ifd); k < n && ifd + 14 + k * 12 <= b.length; k++) {
+        const e = ifd + 2 + k * 12;
+        if (u16(e) === 0x0112) return ({ 3: 180, 6: 90, 8: 270 } as const)[u16(e + 8) as 3 | 6 | 8] ?? 0;
+      }
+      return 0;
+    }
+    i += 2 + ((b[i + 2] << 8) | b[i + 3]);
+  }
+  return 0;
+}

@@ -1,37 +1,51 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { formatSize } from '../lib/files';
+import { useCallback, useState, type ReactNode } from 'react';
+import { acceptsFile, formatSize } from '../lib/files';
 
 export function FileDrop({ accept, multiple, onFiles, label }: {
   accept: string; multiple?: boolean; onFiles: (f: File[]) => void; label?: string;
 }) {
-  const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+  const [skipped, setSkipped] = useState('');
   const take = (list: FileList | null) => {
     if (!list?.length) return;
-    const exts = accept.split(',').map((s) => s.trim().toLowerCase());
-    const ok = [...list].filter((f) =>
-      exts.some((e) => (e.startsWith('.') ? f.name.toLowerCase().endsWith(e) : e.endsWith('/*') ? f.type.startsWith(e.slice(0, -1)) : f.type === e)),
-    );
+    const all = [...list];
+    const ok = all.filter((f) => acceptsFile(accept, f));
+    const bad = all.filter((f) => !ok.includes(f));
+    setSkipped(bad.length ? `Skipped ${bad.map((f) => f.name).join(', ')}: not a supported file` : '');
     if (ok.length) onFiles(multiple ? ok : ok.slice(0, 1));
   };
+  // A <label> opens the picker natively. The old box called input.click() on its own click, and the
+  // input's click bubbled back to it, so some Android browsers opened the gallery twice or closed it.
   return (
-    <div
+    <label
       className={`drop ${over ? 'over' : ''}`}
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); take(e.dataTransfer.files); }}
-      onClick={() => input.current?.click()}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()}
     >
-      <input ref={input} type="file" hidden accept={accept} multiple={multiple} onChange={(e) => { take(e.target.files); e.target.value = ''; }} />
+      <input type="file" className="sr-only" accept={accept} multiple={multiple} onChange={(e) => { take(e.target.files); e.target.value = ''; }} />
       <svg className="drop-ico" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 16V4m0 0L7 9m5-5 5 5" /><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
       </svg>
       <div className="drop-btn">{label ?? (multiple ? 'Select files' : 'Select file')}</div>
       <div className="muted">or drop {multiple ? 'files' : 'a file'} here</div>
-    </div>
+      {skipped && <div className="status error" role="alert">{skipped}</div>}
+    </label>
+  );
+}
+
+/** Small "add more" tile that sits at the end of a grid of picked files. */
+export function AddFiles({ accept, onFiles, label }: { accept: string; onFiles: (f: File[]) => void; label: string }) {
+  return (
+    <label className="add-tile">
+      <input type="file" className="sr-only" accept={accept} multiple onChange={(e) => {
+        const ok = [...(e.target.files ?? [])].filter((f) => acceptsFile(accept, f));
+        e.target.value = '';
+        if (ok.length) onFiles(ok);
+      }} />
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+      <span>{label}</span>
+    </label>
   );
 }
 

@@ -1,6 +1,10 @@
-import { Suspense, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CATEGORIES, catOf, toolById, tools, type Category } from './tools/registry';
+
+// legal pages load on demand so they add nothing to the home page's first load
+const Privacy = lazy(() => import('./Legal').then((m) => ({ default: m.Privacy })));
+const Terms = lazy(() => import('./Legal').then((m) => ({ default: m.Terms })));
 
 const tint = (color: string, more?: CSSProperties) => ({ '--c': color, ...more }) as CSSProperties;
 
@@ -116,9 +120,11 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/tool/:id" element={<ToolPage />} />
+        <Route path="/privacy" element={<Suspense fallback={null}><Privacy /></Suspense>} />
+        <Route path="/terms" element={<Suspense fallback={null}><Terms /></Suspense>} />
       </Routes>
       <footer className="foot">
-        ToolsJunction · Files are processed on this device · <a href="https://github.com/Karthik6146/ToolsJunction" target="_blank" rel="noreferrer">GitHub</a>
+        ToolsJunction · Files are processed on this device · <a href="https://github.com/Karthik6146/ToolsJunction" target="_blank" rel="noreferrer">GitHub</a> · <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link>
       </footer>
     </>
   );

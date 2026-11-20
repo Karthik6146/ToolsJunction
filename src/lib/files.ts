@@ -48,3 +48,19 @@ export function formatSize(n: number): string {
 }
 
 export const PDF_TYPE = 'application/pdf';
+
+const EXT_TYPE: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+  avif: 'image/avif', heic: 'image/heic', heif: 'image/heif', tif: 'image/tiff', tiff: 'image/tiff', pdf: 'application/pdf',
+};
+
+/**
+ * Does `file` match an `accept` list like "image/*,.pdf"? Some Android gallery and cloud-photo
+ * providers hand over files with an empty MIME type, so fall back to the extension.
+ */
+export function acceptsFile(accept: string, file: { name: string; type: string }): boolean {
+  const name = file.name.toLowerCase();
+  const type = (file.type || EXT_TYPE[name.slice(name.lastIndexOf('.') + 1)] || '').toLowerCase();
+  return accept.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean).some((a) =>
+    a.startsWith('.') ? name.endsWith(a) : a.endsWith('/*') ? type.startsWith(a.slice(0, -1)) : type === a);
+}

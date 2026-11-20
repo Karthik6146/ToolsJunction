@@ -72,7 +72,8 @@ Your files never leave your device.
 <td valign="top" width="50%">
 
 **📥 Convert to PDF**
-- Images · Word (.docx) · Excel (.xlsx/.csv) · HTML · Text
+- Images, with a live page preview: drag to reorder, rotate, Fit or Fill, margins. Phone photos come out the right way up.
+- Word (.docx) · Excel (.xlsx/.csv) · HTML · Text
 
 **📤 Convert from PDF**
 - Images (JPG/PNG) · Word · PowerPoint · Excel · Text
@@ -114,6 +115,10 @@ Your files never leave your device.
 - DSC signing needs the Windows app: browsers can't talk to USB tokens. Your token's driver must be installed; Windows asks for the token PIN.
 - Not included yet: PowerPoint → PDF, timestamp-server (TSA) signatures.
 
+## 🔏 Privacy and terms
+
+No accounts, no analytics, no tracking cookies, and your files are never uploaded. Read the full [Privacy Policy](https://karthik6146.github.io/ToolsJunction/#/privacy) and [Terms of Use](https://karthik6146.github.io/ToolsJunction/#/terms).
+
 ## 🛠️ Development
 
 ```bash
@@ -127,7 +132,7 @@ npm run dist:win     # build the Windows installer into release/
 
 **Stack:** Preact (React API) · TypeScript · Vite · pdf-lib (@cantoo fork) · pdf.js · tesseract.js · mammoth · SheetJS · docx · pptxgenjs · jsPDF · html2canvas · Electron
 
-**Releases:** every push to `main` tests, builds and publishes the site to the `gh-pages` branch. Pushing a tag like `v1.0.2` builds the Windows installer and attaches it to a GitHub Release. To sign the installer, add a Windows code-signing certificate as repository secrets `WIN_CSC_LINK` (base64 of the `.pfx`) and `WIN_CSC_KEY_PASSWORD`; without them it is built unsigned. Workflows use read-only tokens by default and actions pinned to commit SHAs.
+**Releases:** every push to `main` tests, builds and publishes the site to the `gh-pages` branch. Pushing to `main` alone never makes a new Windows release. Pushing a tag like `v1.0.2` builds the Windows installer and attaches it to a GitHub Release. To sign the installer, add a Windows code-signing certificate as repository secrets `WIN_CSC_LINK` (base64 of the `.pfx`) and `WIN_CSC_KEY_PASSWORD`; without them it is built unsigned. Workflows use read-only tokens by default and actions pinned to commit SHAs.
 
 ## 📄 License
 

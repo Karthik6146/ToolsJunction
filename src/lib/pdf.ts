@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, degrees, rgb, EncryptedPDFError } from '@cantoo/pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb, EncryptedPDFError, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } from '@cantoo/pdf-lib';
 import type { Bytes } from './files';
 
 export { PDFDocument };
@@ -182,25 +182,47 @@ export async function isEncrypted(bytes: Bytes): Promise<boolean> {
 }
 
 export type PageSize = 'fit' | 'a4' | 'letter';
+export type Orientation = 'auto' | 'portrait' | 'landscape';
+export interface PageOpts { pageSize: PageSize; orientation: Orientation; margin: number; fill: boolean }
+type Rect = { x: number; y: number; w: number; h: number };
 const SIZES: Record<'a4' | 'letter', [number, number]> = { a4: [595.28, 841.89], letter: [612, 792] };
 
-export async function imagesToPdf(
-  images: { bytes: Bytes; type: 'png' | 'jpg' }[],
-  o: { pageSize: PageSize; margin: number; landscape?: boolean },
-): Promise<Bytes> {
+/**
+ * Where an image of w x h pixels, turned `rotate` degrees clockwise, lands on its page.
+ * Points, origin top-left. `box` is the turned image, `clip` the area inside the margins.
+ * Used both to draw the live preview and to write the PDF, so the two always match.
+ */
+export function layoutPage(w: number, h: number, rotate: number, o: PageOpts): { pageW: number; pageH: number; box: Rect; clip: Rect } {
+  const [iw, ih] = rotate % 180 ? [h, w] : [w, h];
+  const m = Math.max(0, o.margin);
+  if (o.pageSize === 'fit') {
+    const box = { x: m, y: m, w: iw, h: ih };
+    return { pageW: iw + 2 * m, pageH: ih + 2 * m, box, clip: box };
+  }
+  let [pw, ph] = SIZES[o.pageSize];
+  if (o.orientation === 'auto' ? iw > ih : o.orientation === 'landscape') [pw, ph] = [ph, pw];
+  const area = { x: m, y: m, w: Math.max(1, pw - 2 * m), h: Math.max(1, ph - 2 * m) };
+  const s = (o.fill ? Math.max : Math.min)(area.w / iw, area.h / ih);
+  const bw = iw * s, bh = ih * s;
+  return { pageW: pw, pageH: ph, box: { x: (pw - bw) / 2, y: (ph - bh) / 2, w: bw, h: bh }, clip: area };
+}
+
+/** One image per page. `rotate` is clockwise degrees (0/90/180/270) applied to the stored pixels. */
+export async function imagesToPdf(images: { bytes: Bytes; type: 'png' | 'jpg'; rotate: number }[], o: PageOpts): Promise<Bytes> {
   const doc = await PDFDocument.create();
   for (const im of images) {
     const img = im.type === 'png' ? await doc.embedPng(im.bytes) : await doc.embedJpg(im.bytes);
-    if (o.pageSize === 'fit') {
-      const p = doc.addPage([img.width + 2 * o.margin, img.height + 2 * o.margin]);
-      p.drawImage(img, { x: o.margin, y: o.margin, width: img.width, height: img.height });
-      continue;
-    }
-    let [w, h] = SIZES[o.pageSize];
-    if (o.landscape ?? img.width > img.height) [w, h] = [h, w];
-    const s = Math.min((w - 2 * o.margin) / img.width, (h - 2 * o.margin) / img.height);
-    const p = doc.addPage([w, h]);
-    p.drawImage(img, { x: (w - img.width * s) / 2, y: (h - img.height * s) / 2, width: img.width * s, height: img.height * s });
+    const r = ((im.rotate % 360) + 360) % 360;
+    const L = layoutPage(img.width, img.height, r, o);
+    const p = doc.addPage([L.pageW, L.pageH]);
+    const k = L.box.w / (r % 180 ? img.height : img.width);
+    const W = img.width * k, H = img.height * k;
+    const bx = L.box.x, by = L.pageH - L.box.y - L.box.h;
+    // pdf-lib turns an image counter-clockwise around its bottom-left corner: shift it so the turned image fills the box
+    const [x, y] = r === 90 ? [bx, by + W] : r === 180 ? [bx + W, by + H] : r === 270 ? [bx + H, by] : [bx, by];
+    if (o.fill) p.pushOperators(pushGraphicsState(), rectangle(L.clip.x, L.pageH - L.clip.y - L.clip.h, L.clip.w, L.clip.h), clip(), endPath());
+    p.drawImage(img, { x, y, width: W, height: H, rotate: degrees(-r) });
+    if (o.fill) p.pushOperators(popGraphicsState());
   }
   return doc.save();
 }

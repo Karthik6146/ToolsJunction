@@ -33,6 +33,7 @@ const imgEdit = () => import('./image/Editor');
 const org = () => import('./pdf/Organize');
 const opt = () => import('./pdf/Optimize');
 const to = () => import('./pdf/ToPdf');
+const i2p = () => import('./pdf/ImagesToPdf');
 const from = () => import('./pdf/FromPdf');
 const mod = () => import('./pdf/Modify');
 const ed = () => import('./pdf/Editor');
@@ -71,7 +72,7 @@ export const tools: ToolDef[] = [
   t('repair-pdf', 'Repair PDF', 'optimize', pg('M9 14.5l2 2 4-4'), 'Rebuild damaged PDF structure', opt, 'RepairPdf'),
   t('ocr-pdf', 'OCR PDF', 'optimize', pg('M9 12.5v-1h1M15 12.5v-1h-1M9 16.5v1h1M15 16.5v1h-1M9.5 14.5h5'), 'Make scanned PDFs searchable and selectable', opt, 'OcrPdf'),
 
-  t('images-to-pdf', 'Images to PDF', 'to-pdf', pg(PICTURE), 'Turn JPG and PNG images into a PDF', to, 'ImagesToPdf'),
+  t('images-to-pdf', 'Images to PDF', 'to-pdf', pg(PICTURE), 'Turn photos into a PDF and arrange the pages with a live preview', i2p, 'ImagesToPdf'),
   t('word-to-pdf', 'Word to PDF', 'to-pdf', pg(LETTER_W), 'Convert DOCX documents to PDF', to, 'WordToPdf'),
   t('excel-to-pdf', 'Excel to PDF', 'to-pdf', pg(SHEET), 'Convert XLSX/CSV spreadsheets to PDF', to, 'ExcelToPdf'),
   t('html-to-pdf', 'HTML to PDF', 'to-pdf', pg('M10.5 12.5l-2 2 2 2M13.5 12.5l2 2-2 2'), 'Convert HTML code or files to PDF', to, 'HtmlToPdf'),
